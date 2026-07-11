@@ -1,0 +1,8 @@
+[build]
+  publish = "public"
+  # Runs the same pipeline as the cron so a fresh deploy ships with data
+  # (public/data/seed.json) before the first scheduled sweep fires.
+  command = "node scripts/run-pipeline.mjs"
+
+[functions]
+  node_bundler = "esbuild"

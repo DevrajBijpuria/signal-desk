@@ -1,0 +1,16 @@
+{
+  "name": "news-intelligence-desk",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "pipeline": "node scripts/run-pipeline.mjs",
+    "dev": "netlify dev"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^10.7.9",
+    "fast-xml-parser": "^5.9.3"
+  },
+  "devDependencies": {
+    "netlify-cli": "^26.2.0"
+  }
+}
