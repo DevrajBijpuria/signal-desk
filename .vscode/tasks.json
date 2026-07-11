@@ -1,0 +1,28 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start dev server (netlify dev)",
+      "type": "npm",
+      "script": "dev",
+      "isBackground": true,
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run pipeline once (writes seed.json)",
+      "type": "npm",
+      "script": "pipeline",
+      "problemMatcher": []
+    },
+    {
+      "label": "Trigger local sweep (needs dev server running)",
+      "type": "shell",
+      "command": "curl -X POST http://localhost:8888/.netlify/functions/refresh-news",
+      "problemMatcher": []
+    }
+  ]
+}

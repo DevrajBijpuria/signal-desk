@@ -1,0 +1,9 @@
+node_modules/
+.netlify/
+public/data/
+scripts/.map-cache/
+
+# secrets — never commit
+.env
+.env.*
+!.env.example

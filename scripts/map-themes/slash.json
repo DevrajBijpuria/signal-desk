@@ -1,0 +1,17 @@
+{
+  "name": "Slash",
+  "description": "Obsidian canvas with copper ledger lines — the Slash design system; derived from maptoposter's midnight_blue (gold-on-navy) with bg/roads remapped to obsidian + copper",
+  "bg": "#08080a",
+  "text": "#e2e3e9",
+  "gradient_color": "#08080a",
+  "water": "#040406",
+  "parks": "#0c0c10",
+  "road_motorway": "#cc9166",
+  "road_primary": "#b07c54",
+  "road_secondary": "#8a6244",
+  "road_tertiary": "#5e4530",
+  "road_residential": "#3a2d22",
+  "road_default": "#5e4530",
+  "graticule": "#1c1d22",
+  "city_dot": "#cc9166"
+}

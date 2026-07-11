@@ -1,0 +1,82 @@
+/* GENERATED from design/tokens.json by scripts/build-tokens.mjs — do not edit by hand. */
+:root {
+  --color-parchment: #e2dedb;
+  --color-bone-cream: #cdc6be;
+  --color-ink-black: #1d1d1b;
+  --color-charcoal: #69645f;
+  --color-pure-black: #000000;
+  --color-ember-orange: #c03f13;
+  --font-editorial-new: "Source Serif 4", Georgia, serif; /* substitutes Editorial New */
+  --font-canopee: "Abril Fatface", "Playfair Display", Georgia, serif; /* substitutes Canopee */
+  --font-domaine-display: "Playfair Display", Georgia, serif; /* substitutes Domaine Display */
+  --font-germgoth: "Pirata One", "IM Fell English", Georgia, serif; /* substitutes Germgoth */
+  --sp-4: 4px;
+  --sp-7: 7px;
+  --sp-10: 10px;
+  --sp-12: 12px;
+  --sp-14: 14px;
+  --sp-17: 17px;
+  --sp-22: 22px;
+  --sp-28: 28px;
+  --sp-29: 29px;
+  --sp-36: 36px;
+  --sp-43: 43px;
+  --sp-58: 58px;
+  --sp-65: 65px;
+  --sp-115: 115px;
+  --sp-unit: 4px;
+  --radius-sm: 2.88px;
+  --radius-lg: 7.2px;
+  --radius-xl: 11.52px;
+  --shadow-sm: rgba(29, 29, 27, 0.2) -4px 4px 6px 0px;
+  --shadow-sm-2: rgba(29, 29, 27, 0.2) -5px 3px 6px 0px;
+  --surface-parchment: #e2dedb;
+  --surface-bone-cream: #cdc6be;
+  --surface-ink-black: #1d1d1b;
+  --surface-pure-black: #000000;
+  --type-base: 300 16px/1.11 "Source Serif 4", Georgia, serif;
+  --type-lg: 300 17px/1.25 "Source Serif 4", Georgia, serif;
+  --type-lg-2: 400 17px/1.25 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-lg-3: 300 19px/1.08 "Source Serif 4", Georgia, serif;
+  --type-xl: 400 20px/1 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-xl-2: 500 20px/1 "Playfair Display", Georgia, serif;
+  --type-xl-3: 300 20px/0.93 "Source Serif 4", Georgia, serif;
+  --type-xl-4: 400 22px/1 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-xl-5: 500 22px/1 "Playfair Display", Georgia, serif;
+  --type-xl-6: 400 23px/0.81 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-2xl: 300 24px/1.18 "Source Serif 4", Georgia, serif;
+  --type-2xl-2: 300 29px/1.25 "Source Serif 4", Georgia, serif;
+  --type-3xl: 300 31px/1.16 "Source Serif 4", Georgia, serif;
+  --type-3xl-2: 300 32px/1.2 "Source Serif 4", Georgia, serif;
+  --type-3xl-3: 300 32px/1.36 "Source Serif 4", Georgia, serif;
+  --type-3xl-4: 400 32px/0.91 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-3xl-5: 500 32px/0.91 "Playfair Display", Georgia, serif;
+  --type-3xl-6: 300 32px/1.27 "Source Serif 4", Georgia, serif;
+  --type-3xl-7: 500 32px/0.91 "Playfair Display", Georgia, serif;
+  --type-4xl: 300 37px/1.15 "Source Serif 4", Georgia, serif;
+  --type-4xl-2: 400 43px/0.5 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-5xl: 400 65px/1 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-5xl-2: 400 65px/1 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-5xl-3: 500 65px/0.67 "Playfair Display", Georgia, serif;
+  --type-5xl-4: 400 72px/1 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-5xl-5: 500 72px/1 "Playfair Display", Georgia, serif;
+  --type-5xl-6: 400 86px/1 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-5xl-7: 500 86px/1 "Playfair Display", Georgia, serif;
+  --type-5xl-8: 300 86px/1.33 "Source Serif 4", Georgia, serif;
+  --type-5xl-9: 400 86px/0.67 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-5xl-10: 400 109px/0.79 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-5xl-11: 500 109px/0.79 "Playfair Display", Georgia, serif;
+  --type-5xl-12: 400 112px/0.77 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-5xl-13: 400 118px/0.73 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-5xl-14: 500 118px/0.73 "Playfair Display", Georgia, serif;
+  --type-5xl-15: 400 122px/0.78 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-5xl-16: 500 122px/0.78 "Playfair Display", Georgia, serif;
+  --type-5xl-17: 400 158px/0.55 "Pirata One", "IM Fell English", Georgia, serif;
+  --type-5xl-18: 400 202px/0.71 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-5xl-19: 400 212px/0.68 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-5xl-20: 400 366px/0.79 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-5xl-21: 400 432px/0.67 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-5xl-22: 400 446px/0.65 "Abril Fatface", "Playfair Display", Georgia, serif;
+  --type-5xl-23: 500 446px/0.65 "Playfair Display", Georgia, serif;
+  --type-5xl-24: 400 533px/0.65 "Abril Fatface", "Playfair Display", Georgia, serif;
+}

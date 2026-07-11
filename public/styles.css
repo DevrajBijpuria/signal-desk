@@ -1,0 +1,680 @@
+/* ================================================================
+   Signal Desk — the Miranda broadsheet edition
+   1890s woodblock newspaper on warm parchment: Ink Black text and
+   banners, Bone Cream panels, one Ember Orange stamp. All color,
+   type, spacing, radius, and shadow values come from tokens.css
+   (generated from design/tokens.json). Flat and borderless; depth
+   from contrast, not shadow — the directional ink shadow belongs
+   to the lead card only.
+   ================================================================ */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { color-scheme: light; }
+
+:root {
+  /* Charcoal for print: the token charcoal misses 4.5:1 at caption sizes, so
+     small-caps furniture prints in a deeper mix of the same two token inks. */
+  --color-charcoal-print: color-mix(in srgb, var(--color-charcoal) 45%, var(--color-ink-black));
+}
+
+body {
+  background: var(--color-parchment);
+  color: var(--color-ink-black);
+  font-family: var(--font-editorial-new);
+  font-weight: 300;
+  font-size: 16px;
+  line-height: 1.27;          /* --text-body-sm leading */
+  letter-spacing: -0.16px;
+}
+
+a { color: inherit; }
+
+:focus-visible {
+  outline: 2px solid var(--color-ink-black);
+  outline-offset: 2px;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.paper {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 var(--sp-22) var(--sp-65);
+}
+
+/* ============ topbar — the dateline ============ */
+.topbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: var(--sp-14);
+  align-items: baseline;
+  padding: var(--sp-10) 0;
+  border-bottom: 1px solid var(--color-ink-black);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-charcoal-print);
+}
+.topbar-center { text-align: center; }
+.topbar-right { text-align: right; }
+
+/* ============ masthead — the signature banner ============ */
+.masthead-banner {
+  background: var(--surface-ink-black);
+  color: var(--color-parchment);
+  font-family: var(--font-canopee);
+  font-weight: 400; /* Abril Fatface ships one weight; the fatness is the face */
+  /* base clamp is a fallback — fitBanner() in app.js sizes the name exactly
+     to the page width once fonts are ready */
+  font-size: clamp(36px, 14vw - 8px, 212px);
+  line-height: 0.8;
+  letter-spacing: -0.03em;
+  text-align: center;
+  text-transform: uppercase;
+  padding: 0.12em 0 0.08em;
+  margin-top: var(--sp-14);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* ============ index strip — the paper's contents line ============ */
+.index-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-12) var(--sp-28);
+  padding: var(--sp-12) 0;
+  margin-top: var(--sp-14);
+  border-top: 2px solid var(--color-ink-black);
+  border-bottom: 1px solid var(--color-ink-black);
+}
+.tab-set {
+  display: contents; /* tablist wrapper for ARIA only; layout stays on the strip */
+}
+
+.index-strip [role="tab"] {
+  font-size: 17px;
+  line-height: 1.25;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-decoration: none;
+  transition: color 0.15s ease;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-7);
+}
+.index-strip [role="tab"]:hover {
+  color: var(--color-pure-black);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.index-strip [role="tab"][aria-selected="true"] {
+  color: var(--color-pure-black);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+}
+/* the ember star marks the open page — the accent's sanctioned use */
+.index-strip [role="tab"][aria-selected="true"]::before {
+  content: "";
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  background: var(--color-ember-orange);
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+}
+
+.resync {
+  margin-left: auto;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease;
+}
+.resync:hover { color: var(--color-pure-black); text-decoration-thickness: 2px; }
+.resync[disabled] { opacity: 0.5; cursor: wait; }
+
+/* ============ press notices (stale / errors) ============ */
+.press-notice {
+  border-top: 2px solid var(--color-ink-black);
+  border-bottom: 2px solid var(--color-ink-black);
+  padding: var(--sp-10) 0;
+  margin-top: var(--sp-14);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ============ section banner + desk line ============ */
+.section-banner {
+  background: var(--surface-ink-black);
+  color: var(--color-parchment);
+  font-family: var(--font-canopee);
+  font-weight: 400;
+  font-size: clamp(48px, 11vw, 176px); /* fallback; fitBanner() finalizes */
+  line-height: 0.8;
+  letter-spacing: -0.03em;
+  text-align: center;
+  text-transform: uppercase;
+  padding: 0.12em 0 0.08em;
+  margin-top: var(--sp-28);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.section-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-12);
+  padding: var(--sp-10) 0;
+  border-bottom: 1px solid var(--color-charcoal);
+}
+
+.desk-line {
+  font-size: 17px;
+  line-height: 1.25;
+  font-style: italic;
+  color: var(--color-charcoal-print);
+}
+
+/* edition switch (sports) — an edition line, not web pills */
+.edition-switch { display: flex; align-items: baseline; gap: var(--sp-10); }
+.edition-switch[hidden] { display: none; }
+.edition-switch button {
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: color 0.15s ease;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-7);
+}
+.edition-switch button:hover { color: var(--color-pure-black); text-decoration: underline; text-underline-offset: 3px; }
+.edition-switch button.active {
+  color: var(--color-pure-black);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.edition-switch button.active::before {
+  content: "";
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  background: var(--color-ember-orange);
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+}
+.edition-sep { font-size: 15px; }
+
+/* ============ the board ============ */
+.board { position: relative; padding-top: var(--sp-22); min-height: 320px; }
+
+.board.refreshing > * { opacity: 0.45; }
+/* a solid ink rule runs across while the presses re-run — no gradients here */
+.board.refreshing::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 140px;
+  height: 2px;
+  background: var(--color-ink-black);
+  animation: pressrun 1.1s linear infinite;
+}
+@keyframes pressrun {
+  from { transform: translateX(-140px); }
+  to { transform: translateX(min(100vw, 1440px)); }
+}
+
+/* ---- the front page: importance decides footprint ----
+   A lead well + secondary row above the fold, ruled columns below,
+   and a briefs rail on the right — not a uniform card wall. */
+.front {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--sp-29);
+  align-items: start;
+}
+.front--no-rail { grid-template-columns: minmax(0, 1fr); }
+
+/* the lead card carries the one sanctioned directional ink shadow */
+.lead {
+  background: var(--surface-bone-cream);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+  padding: var(--sp-28) var(--sp-28) var(--sp-22);
+}
+
+/* secondary well: the two next-biggest stories share a ruled row */
+.secondary-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-29);
+  margin-top: var(--sp-28);
+}
+.secondary-row > .story { border-top: none; padding-top: 0; }
+.secondary-row > .story + .story {
+  border-left: 1px solid var(--color-ink-black);
+  padding-left: var(--sp-29);
+  margin-left: calc(-1 * var(--sp-14));
+}
+.story--secondary .headline { font-size: 31px; line-height: 1.02; }
+.story--secondary .story-summary { font-size: 17px; line-height: 1.3; }
+
+/* the fold — a double rule, the classic break */
+.fold-rule {
+  border-top: 3px double var(--color-ink-black);
+  margin: var(--sp-36) 0 var(--sp-14);
+}
+
+.kicker-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-12);
+  flex-wrap: wrap;
+}
+
+.kicker {
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.lead-headline {
+  font-family: var(--font-canopee); /* Abril Fatface — the fatface carries headlines */
+  font-weight: 400;
+  font-size: clamp(30px, 4.2vw, 60px);
+  line-height: 1.02;
+  letter-spacing: -0.015em;
+  margin: var(--sp-12) 0 var(--sp-14);
+  overflow-wrap: anywhere;
+}
+.lead-headline a, .headline a {
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.lead-headline a:hover, .headline a:hover {
+  color: var(--color-pure-black);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1.5px;
+}
+
+.lead-body { display: grid; grid-template-columns: 1.7fr 1fr; gap: var(--sp-28); }
+
+.lead-standfirst {
+  font-family: var(--font-domaine-display);
+  font-weight: 500;
+  font-style: italic;
+  font-size: 20px;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--sp-12);
+  overflow-wrap: anywhere;
+}
+
+.lead-summary {
+  font-size: 19px;
+  line-height: 1.4;
+  text-align: justify;
+  hyphens: auto;
+  overflow-wrap: anywhere;
+}
+/* the Canopee drop cap — the lead story's flourish, prose summaries only
+   (a drop-cap "$" on a stat line reads as a rendering error) */
+.lead-summary--prose::first-letter {
+  font-family: var(--font-canopee);
+  font-weight: 800;
+  font-size: 64px;
+  line-height: 0.62;
+  float: left;
+  padding: 6px 8px 0 0;
+}
+
+.pullquote {
+  border-top: 2px solid var(--color-ink-black);
+  border-bottom: 2px solid var(--color-ink-black);
+  font-family: var(--font-domaine-display);
+  font-weight: 500;
+  font-style: italic;
+  font-size: 22px;
+  line-height: 1.18;
+  letter-spacing: -0.025em;
+  padding: var(--sp-12) 0;
+  margin-top: var(--sp-17);
+  overflow-wrap: anywhere;
+}
+
+.lead-rail {
+  border-left: 1px solid var(--color-ink-black);
+  padding-left: var(--sp-17);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-12);
+  align-items: flex-start;
+}
+
+/* ---- the stamp: legitimacy as a circular hand-stamped press mark ----
+   Inline SVG (built in app.js): double ring, arc text, a banner across the
+   middle with the level word, flanking stars, feTurbulence distress. Ember
+   for verified — the page's sanctioned chromatic note — ink otherwise. */
+.stampc {
+  float: right;
+  shape-outside: circle(52%);
+  margin: 0 0 var(--sp-7) var(--sp-10);
+  width: 62px;
+  height: 62px;
+}
+.stampc svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.stampc--high { transform: rotate(-8deg); color: var(--color-ember-orange); }
+.stampc--medium { transform: rotate(5deg); opacity: 0.72; color: var(--color-ink-black); } /* the lighter, partial press */
+.stampc--low { transform: rotate(-12deg); color: var(--color-ink-black); }
+.stamp-arc-text {
+  font-family: var(--font-editorial-new);
+  font-size: 9px;
+  font-weight: 300;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  fill: currentColor;
+}
+.stamp-word {
+  font-family: var(--font-editorial-new);
+  font-weight: 300;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  fill: currentColor;
+}
+.stamp-stars path { fill: currentColor; }
+.lead .stampc { width: 96px; height: 96px; }
+.story--secondary .stampc { width: 72px; height: 72px; }
+.brief .stampc { width: 46px; height: 46px; margin-left: var(--sp-7); }
+
+/* ---- metadata: bylines, reasons, wires ----
+   (Ink, not Charcoal: #69645f misses 4.5:1 at caption sizes on both paper
+   surfaces, so Charcoal stays on rules and large quiet accents only.) */
+.byline {
+  font-size: 13px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.byline a { text-decoration: underline; text-underline-offset: 3px; transition: color 0.15s ease; }
+.byline a:hover { color: var(--color-pure-black); text-decoration-thickness: 1.5px; }
+
+.reason {
+  font-size: 14px;
+  line-height: 1.35;
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
+/* ---- market wire: a bordered inset, data set like a ticker box ---- */
+.market-wire {
+  border: 1px solid var(--color-ink-black);
+  background: var(--surface-bone-cream);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-10) var(--sp-12);
+  font-size: 13px;
+  line-height: 1.4;
+  max-width: 46ch;
+}
+.market-wire-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-7);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 11px;
+  border-bottom: 1px solid var(--color-charcoal);
+  padding-bottom: 4px;
+  margin-bottom: 6px;
+}
+.market-wire-head svg { width: 10px; height: 10px; fill: var(--color-ink-black); flex: none; }
+.market-assets { display: block; text-transform: uppercase; letter-spacing: 0.04em; font-size: 12px; }
+
+/* ---- below the fold: an aligned newspaper grid ----
+   Every story is a grid cell in a shared row/column matrix, so the rules
+   between stories line up across ALL columns and every cell in a row is the
+   same height — the whole section reads as clean as the lead well above it,
+   instead of three ragged independent stacks. The gridlines are drawn by a
+   1px gap over an ink backing: each parchment cell covers the backing and the
+   gaps show through as hairline rules, perfectly aligned and fully responsive
+   (no per-column border math). Stories flow row-major, so the highest-
+   importance items sit along the top row. */
+.columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--color-ink-black);
+}
+.columns > .story {
+  background: var(--color-parchment);
+  padding: var(--sp-17) var(--sp-17) var(--sp-22);
+}
+/* blank cells that complete the last row — parchment covers the ink backing */
+.story--filler { padding: 0; min-height: 0; }
+
+.story {
+  padding: var(--sp-14) 0 var(--sp-17);
+  display: flow-root;
+}
+.secondary-row .story { border-top: none; padding-top: 0; }
+
+.headline {
+  font-family: var(--font-canopee); /* Abril Fatface */
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 1.08;
+  letter-spacing: -0.012em;
+  margin: var(--sp-7) 0 var(--sp-7);
+  overflow-wrap: anywhere;
+}
+
+.story-summary {
+  font-size: 16px;
+  line-height: 1.27;
+  letter-spacing: -0.16px;
+  margin-bottom: var(--sp-10);
+  text-align: justify;
+  hyphens: auto;
+  overflow-wrap: anywhere;
+}
+
+.story .byline { margin-bottom: var(--sp-7); }
+.story .market-wire { margin-bottom: var(--sp-10); }
+
+/* ---- the briefs rail: minor items in a single-column stack ---- */
+.briefs {
+  border-left: 1px solid var(--color-ink-black);
+  padding-left: var(--sp-17);
+}
+.briefs-head {
+  font-size: 13px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  border-bottom: 2px solid var(--color-ink-black);
+  padding-bottom: var(--sp-7);
+}
+.brief {
+  padding: var(--sp-12) 0;
+  border-bottom: 1px solid var(--color-charcoal);
+}
+.brief:last-child { border-bottom: none; }
+.brief .headline { font-size: 18px; line-height: 1.12; }
+
+/* ============ press-stopped / quiet states ============ */
+.state {
+  border-top: 2px solid var(--color-ink-black);
+  border-bottom: 2px solid var(--color-ink-black);
+  padding: var(--sp-43) var(--sp-14);
+  text-align: center;
+}
+/* the rare blackletter moment — reserved for when the presses stop */
+.state-title {
+  font-family: var(--font-germgoth);
+  font-size: clamp(44px, 8vw, 88px);
+  line-height: 0.9;
+  font-weight: 400;
+}
+.state p {
+  font-size: 17px;
+  line-height: 1.25;
+  max-width: 52ch;
+  margin: var(--sp-14) auto;
+  text-align: left; /* body copy stays flush-left; only the title centers */
+}
+.state .resync { margin: 0; }
+
+/* ============ colophon ============ */
+.colophon {
+  margin-top: var(--sp-58);
+  padding-top: var(--sp-14);
+  border-top: 2px solid var(--color-ink-black);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-28);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.colophon-head {
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-size: 12px;
+  margin-bottom: var(--sp-7);
+  border-bottom: 1px solid var(--color-charcoal);
+  padding-bottom: 4px;
+}
+
+/* ============ the page flip — the signature interaction ============
+   The WHOLE viewport turns like a bound book page (the turn.js / Apple Books
+   model): one leaf hinged on the left spine sweeps the sheet from right to
+   left about a slightly tilted axis so the top-right corner leads, while a
+   curl-shade band sweeps across to fake the page catching light as it bends,
+   and a cast shadow rakes over the incoming page beneath. Transform + opacity
+   only, so it composites on the GPU and stays smooth on mobile. */
+.flip-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  perspective: 2200px;
+  perspective-origin: 74% 12%; /* upper-right: the corner that lifts first */
+  pointer-events: none;
+  overflow: hidden;
+}
+/* the shadow the turning sheet casts on the page already on the stand */
+.flip-cast {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, rgba(29, 29, 27, 0.32), rgba(29, 29, 27, 0.05) 42%, transparent 66%);
+  transform-origin: left center;
+  animation: flipcast 780ms cubic-bezier(0.42, 0, 0.3, 1) forwards;
+}
+.leaf {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  transform-style: preserve-3d;
+  will-change: transform;
+  animation: pageturn 780ms cubic-bezier(0.42, 0, 0.32, 1) forwards;
+}
+.leaf-face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  backface-visibility: hidden;
+  background: var(--color-parchment);
+}
+.leaf-front > .fold-shot { position: absolute; top: 0; left: 0; }
+/* the verso: blank parchment with a gutter shadow pooling at the spine */
+.leaf-back {
+  transform: rotateY(180deg);
+  background:
+    linear-gradient(270deg, rgba(29, 29, 27, 0.18), transparent 24%),
+    var(--color-parchment);
+  border-right: 1px solid var(--color-charcoal);
+}
+/* the curl highlight — darkens the sheet toward its leading edge, peaking as
+   the page passes edge-on, so the flat leaf reads as a curved surface */
+.leaf-shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  backface-visibility: hidden;
+  background: linear-gradient(102deg,
+    rgba(29, 29, 27, 0) 46%,
+    rgba(29, 29, 27, 0.06) 66%,
+    rgba(29, 29, 27, 0.34) 88%,
+    rgba(29, 29, 27, 0.5) 100%);
+  opacity: 0;
+  animation: curlshade 780ms ease-in forwards;
+}
+
+@keyframes pageturn {
+  from { transform: rotate3d(0.16, 1, 0, 0deg); }
+  to   { transform: rotate3d(0.16, 1, 0, -178deg); }
+}
+@keyframes curlshade {
+  0%   { opacity: 0; }
+  50%  { opacity: 1; }
+  100% { opacity: 0.15; }
+}
+@keyframes flipcast {
+  0%   { opacity: 0; transform: skewY(0deg) scaleX(0.2); }
+  40%  { opacity: 1; }
+  100% { opacity: 0; transform: skewY(-4deg) scaleX(1); }
+}
+body.flipping { overflow: hidden; }
+
+/* ============ responsive ============
+   The below-fold grid collapses 3 → 2 → 1 in pure CSS; the 1px gap keeps the
+   rules aligned at every count and it can never overflow. */
+@media (max-width: 1024px) {
+  .front { grid-template-columns: minmax(0, 1fr) 250px; }
+  .story--secondary .headline { font-size: 26px; }
+  .columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 768px) {
+  .front { grid-template-columns: 1fr; }
+  .briefs { border-left: none; padding-left: 0; border-top: 2px solid var(--color-ink-black); padding-top: var(--sp-12); }
+  .secondary-row { grid-template-columns: 1fr; }
+  .secondary-row > .story + .story {
+    border-left: none;
+    padding-left: 0;
+    margin-left: 0;
+    border-top: 1px solid var(--color-charcoal);
+    padding-top: var(--sp-14);
+  }
+  .lead-body { grid-template-columns: 1fr; }
+  .lead-rail { border-left: none; padding-left: 0; border-top: 1px solid var(--color-ink-black); padding-top: var(--sp-12); }
+}
+
+@media (max-width: 640px) {
+  .paper { padding: 0 var(--sp-14) var(--sp-43); }
+  .topbar { grid-template-columns: 1fr; gap: 2px; text-align: left; }
+  .topbar-center, .topbar-right { text-align: left; }
+  /* single reading column; the 1px gap still rules each story off the next */
+  .columns { grid-template-columns: 1fr; }
+  .index-strip { gap: var(--sp-10) var(--sp-17); }
+  .resync { margin-left: 0; }
+  .colophon { grid-template-columns: 1fr; }
+}
+
+/* ============ reduced motion ============ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  .board.refreshing > * { opacity: 0.7; }
+  .flip-stage { display: none !important; } /* cut straight to the new page */
+}

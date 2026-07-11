@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Signal Desk — the free edition</title>
+  <meta name="description" content="A personal news intelligence desk set as a broadsheet: tech & AI, world, India, sports — every story stamped for legitimacy by rules, not models.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' rx='3' fill='%23c03f13'/%3E%3Ctext x='16' y='22' font-family='Georgia,serif' font-size='14' fill='%23e2dedb' text-anchor='middle'%3ESD%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Free substitutes for the Miranda faces (see design/DESIGN.md):
+       Editorial New → Source Serif 4 · Canopee → Abril Fatface (v4) ·
+       Domaine Display → Playfair Display · Germgoth → Pirata One.
+       Loaded without blocking first paint; system serif fallbacks render immediately. -->
+  <link rel="stylesheet" media="print" onload="this.media='all'"
+        href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Pirata+One&family=Playfair+Display:ital,wght@0,500;1,500&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;1,8..60,300&display=swap">
+  <noscript>
+    <link rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Abril+Fatface&family=Pirata+One&family=Playfair+Display:ital,wght@0,500;1,500&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;1,8..60,300&display=swap">
+  </noscript>
+  <link rel="stylesheet" href="/tokens.css">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="paper">
+    <header class="topbar" role="banner">
+      <span class="topbar-cell" id="folio-no">No. — · Free edition</span>
+      <span class="topbar-cell topbar-center" id="folio-date">—</span>
+      <span class="topbar-cell topbar-right" id="folio-press" aria-live="polite">Establishing the wire…</span>
+    </header>
+
+    <div class="masthead-banner" role="img" aria-label="Signal Desk">SIGNAL&nbsp;DESK</div>
+
+    <nav class="index-strip" aria-label="Sections">
+      <div class="tab-set" role="tablist" aria-label="Desks">
+        <button type="button" role="tab" id="tab-tech" aria-controls="board" aria-selected="true" data-tab="tech">Tech &amp; AI</button>
+        <button type="button" role="tab" id="tab-geopolitics" aria-controls="board" aria-selected="false" tabindex="-1" data-tab="geopolitics">World</button>
+        <button type="button" role="tab" id="tab-india" aria-controls="board" aria-selected="false" tabindex="-1" data-tab="india">India</button>
+        <button type="button" role="tab" id="tab-esports" aria-controls="board" aria-selected="false" tabindex="-1" data-tab="esports">Sports</button>
+      </div>
+      <button type="button" class="resync" id="refresh">Resync the presses</button>
+    </nav>
+
+    <div id="stale-banner" class="press-notice" hidden></div>
+
+    <section class="section">
+      <div class="section-banner" id="section-banner" aria-hidden="true">TECH</div>
+      <div class="section-sub">
+        <p class="desk-line" id="desk-line"></p>
+        <div class="edition-switch" id="esports-scope" hidden role="group" aria-label="Sports edition">
+          <button type="button" data-scope="global" class="active" aria-pressed="true">Global edition</button>
+          <span class="edition-sep" aria-hidden="true">/</span>
+          <button type="button" data-scope="india" aria-pressed="false">India edition</button>
+        </div>
+      </div>
+      <main id="board" class="board" role="tabpanel" aria-labelledby="tab-tech" tabindex="0"></main>
+    </section>
+
+    <footer class="colophon">
+      <div>
+        <p class="colophon-head">About this paper</p>
+        <p>Printed at zero cost on Netlify's free presses: a scheduled sweep scores the wires by rules — source tiers plus corroboration, no model in the loop — and this page reads the stored edition. Rumors run stamped UNCONFIRMED until a primary source signs them.</p>
+      </div>
+      <div>
+        <p class="colophon-head">The wires</p>
+        <p>HN · arXiv · TechCrunch · The Verge · VentureBeat · Ars Technica · Wired · MIT&nbsp;TR · IEEE&nbsp;Spectrum · The&nbsp;Register · Reuters · AP · BBC · Al&nbsp;Jazeera · Guardian · DW · France&nbsp;24 · NPR · UN&nbsp;News · GDELT · PIB · The&nbsp;Hindu · Indian&nbsp;Express · HT · NDTV · TOI · Liquipedia · Dexerto · Dot&nbsp;Esports</p>
+      </div>
+    </footer>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>
