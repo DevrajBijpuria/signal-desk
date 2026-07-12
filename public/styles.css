@@ -379,6 +379,8 @@ button {
 .stampc--high { transform: rotate(-8deg); color: var(--color-ember-orange); }
 .stampc--medium { transform: rotate(5deg); opacity: 0.72; color: var(--color-ink-black); } /* the lighter, partial press */
 .stampc--low { transform: rotate(-12deg); color: var(--color-ink-black); }
+/* commentary is a category, not a trust tier — plain ink, a light press */
+.stampc--commentary { transform: rotate(4deg); opacity: 0.62; color: var(--color-ink-black); }
 .stamp-arc-text {
   font-family: var(--font-editorial-new);
   font-size: 9px;
@@ -416,6 +418,16 @@ button {
   font-style: italic;
   overflow-wrap: anywhere;
 }
+
+/* commentary links attached under a story's byline */
+.commentary-links {
+  font-size: 13px;
+  line-height: 1.5;
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+.commentary-links a { text-decoration: underline; text-underline-offset: 3px; transition: color 0.15s ease; }
+.commentary-links a:hover { color: var(--color-pure-black); text-decoration-thickness: 1.5px; }
 
 /* ---- market wire: a bordered inset, data set like a ticker box ---- */
 .market-wire {

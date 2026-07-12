@@ -176,6 +176,8 @@ const STAMP_TEXT = {
   high: { arc: "WIRE CONFIRMED", word: "VERIFIED", filter: "stamp-rough-1" },
   medium: { arc: "SINGLE SOURCE", word: "REPORTED", filter: "stamp-rough-2" },
   low: { arc: "UNVERIFIED", word: "UNVERIFIED", filter: "stamp-rough-3" },
+  // Not a trust tier — YouTube commentary never carries a legitimacy rating.
+  commentary: { arc: "OPINION DESK", word: "COMMENTARY", filter: "stamp-rough-2" },
 };
 
 let stampSeq = 0;
@@ -200,9 +202,13 @@ function injectStampDefs() {
 }
 
 function stampHtml(item) {
-  const level = item.trust?.level ?? "low";
+  const isCommentary = item.kind === "commentary";
+  const level = isCommentary ? "commentary" : item.trust?.level ?? "low";
   const t = STAMP_TEXT[level] ?? STAMP_TEXT.low;
   const word = level === "low" && item.rumor ? "RUMOR" : t.word;
+  const reason = isCommentary
+    ? `Commentary from ${item.sources?.[0]?.name ?? "an independent channel"} — opinion and analysis, outside the legitimacy tiers; never counted as corroboration.`
+    : item.trust?.reason ?? "";
   const wordSize = word.length > 8 ? 10.5 : 13;
   const id = `stamp-arc-${++stampSeq}`;
   // the smudged UNVERIFIED stamp gets a double-struck ring and a strike line
@@ -211,8 +217,8 @@ function stampHtml(item) {
        <line x1="16" y1="76" x2="84" y2="30" stroke="currentColor" stroke-width="3.5" opacity="0.8"/>`
     : "";
   return `<span class="stampc stampc--${esc(level)}" role="img"
-      aria-label="Legitimacy: ${esc(word)} — ${esc(t.arc)}. ${esc(item.trust?.reason ?? "")}"
-      title="${esc(item.trust?.reason ?? "")}">
+      aria-label="${isCommentary ? "Commentary" : "Legitimacy"}: ${esc(word)} — ${esc(t.arc)}. ${esc(reason)}"
+      title="${esc(reason)}">
     <svg viewBox="0 0 100 100" aria-hidden="true">
       <g filter="url(#${t.filter})">
         <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="5"/>
@@ -247,7 +253,8 @@ function bylineHtml(item) {
   const time = item.publishedAt
     ? `<span title="${esc(new Date(item.publishedAt).toLocaleString())}">${relTime(item.publishedAt)}</span>`
     : "";
-  return `<p class="byline">From the wire: ${links.join(" · ")}${time ? " · " + time : ""}</p>`;
+  const label = item.kind === "commentary" ? "From the opinion desk" : "From the wire";
+  return `<p class="byline">${label}: ${links.join(" · ")}${time ? " · " + time : ""}</p>`;
 }
 
 const DIR_SVG = {
@@ -272,7 +279,16 @@ function kickerText(item) {
 }
 
 function reasonHtml(item) {
-  return `<p class="reason">${esc(item.trust.reason)}</p>`;
+  return item.trust ? `<p class="reason">${esc(item.trust.reason)}</p>` : "";
+}
+
+/* Commentary that topically matches the story rides along under the byline —
+   linked, named, and never part of the source list or the stamp. */
+function commentaryHtml(item) {
+  if (!Array.isArray(item.commentary) || !item.commentary.length) return "";
+  const links = item.commentary.slice(0, 3).map((c) =>
+    `<a href="${esc(safeUrl(c.url))}" target="_blank" rel="noopener">${esc(c.channel)} — “${esc(deEmoji(c.title))}”</a>`);
+  return `<p class="commentary-links">Commentary: ${links.join(" · ")}</p>`;
 }
 
 /* Pull quote only when the story actually contains one — a real quotation
@@ -309,6 +325,7 @@ function leadHtml(item) {
         <div class="lead-rail">
           ${bylineHtml(item)}
           ${reasonHtml(item)}
+          ${commentaryHtml(item)}
           ${marketHtml(item)}
         </div>
       </div>
@@ -318,7 +335,7 @@ function leadHtml(item) {
 function storyHtml(item, { brief = false, secondary = false } = {}) {
   const kicker = kickerText(item);
   const deck = brief ? "" : deckFor(item);
-  const showReason = item.trust.level === "low";
+  const showReason = item.trust?.level === "low";
   const cls = brief ? "brief" : secondary ? "story story--secondary" : "story";
   return `
     <article class="${cls}">
@@ -328,6 +345,7 @@ function storyHtml(item, { brief = false, secondary = false } = {}) {
       ${deck ? `<p class="story-summary">${esc(deck)}</p>` : ""}
       ${marketHtml(item)}
       ${bylineHtml(item)}
+      ${commentaryHtml(item)}
       ${showReason ? reasonHtml(item) : ""}
     </article>`;
 }
