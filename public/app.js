@@ -335,6 +335,34 @@ function pulseHtml(item) {
     </aside>`;
 }
 
+/* ---------- per-story opinion (World + India) ----------
+   Columns that topically match a story arrive as story.opinions[] — pointers
+   only, never sources, never scored. Each such story carries its own small
+   OPINION button that unfolds the columns inline; stories without a match
+   show nothing. The full desk-wide list stays behind the header's OPINION
+   flip. */
+
+function storyOpinionsHtml(item) {
+  const ops = item.opinions;
+  if (!ops?.length) return "";
+  const rows = ops.slice(0, 3).map((o) =>
+    `<p class="story-opinion-row"><a href="${esc(safeUrl(o.url))}" target="_blank" rel="noopener">${esc(o.source)} — “${esc(deEmoji(o.title))}”</a></p>`).join("");
+  return `<div class="story-opinions">
+      <button type="button" class="opinion-btn" aria-expanded="false">Opinion on this story (${ops.length})</button>
+      <div class="story-opinion-list" hidden>${rows}</div>
+    </div>`;
+}
+
+// one delegated listener survives every board re-render
+board.addEventListener("click", (e) => {
+  const btn = e.target.closest(".opinion-btn");
+  if (!btn) return;
+  const list = btn.parentElement.querySelector(".story-opinion-list");
+  const open = list.hidden;
+  list.hidden = !open;
+  btn.setAttribute("aria-expanded", String(open));
+});
+
 /* Pull quote only when the story actually contains one — a real quotation
    in the wire copy, not manufactured emphasis. */
 function pullQuote(summary) {
@@ -370,6 +398,7 @@ function leadHtml(item) {
           ${bylineHtml(item)}
           ${reasonHtml(item)}
           ${commentaryHtml(item)}
+          ${storyOpinionsHtml(item)}
           ${marketHtml(item)}
           ${pulseHtml(item)}
         </div>
@@ -392,6 +421,7 @@ function storyHtml(item, { brief = false, secondary = false } = {}) {
       ${bylineHtml(item)}
       ${commentaryHtml(item)}
       ${showReason ? reasonHtml(item) : ""}
+      ${brief ? "" : storyOpinionsHtml(item)}
       ${brief ? "" : pulseHtml(item)}
     </article>`;
 }
@@ -671,6 +701,8 @@ function selectTab(tab) {
 const opinionBtn = document.getElementById("opinion-toggle");
 
 function renderOpinionToggle() {
+  // Opinion is a World + India feature — the toggle never prints elsewhere.
+  opinionBtn.hidden = state.tab !== "geopolitics" && state.tab !== "india";
   const opinionView = state.view === "opinion";
   opinionBtn.textContent = opinionView ? `Back to ${SECTION_META[state.tab].banner}` : "Opinion";
   opinionBtn.setAttribute("aria-pressed", String(opinionView));

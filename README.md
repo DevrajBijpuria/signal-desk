@@ -101,28 +101,32 @@ The tier map lives in [src/scoring.mjs](src/scoring.mjs) — extend it as you ad
 ### Opinion detection & the OPINION flip view
 
 A column from a tier-1 outlet is a viewpoint, not a claim — legitimacy scoring
-shouldn't vouch for it. [src/opinion.mjs](src/opinion.mjs) flags opinion and
-editorial content from signals already in the fetched data, no model: URL path
-segments (`/opinion/`, `/op-ed/`, `/perspectives/`, `/commentary/`,
-`/editorial/`, `/voices/`, `/column/` and their plurals), RSS `<category>`
-tags ("Opinion", "Editorial", "Comment", …), and byline patterns ("Opinion
-by", "contributing columnist"). Flagged items get `contentType: "opinion"`
-and are **pulled out of the legitimacy pipeline entirely** — never
-tier-stamped, never merged into a story's sources, never counted as
-corroboration. This applies to all four sections; the same guard covers
-Tavily discovery and the on-demand wire search.
+shouldn't vouch for it. On the **World and India desks only** (Tech & AI and
+Esports carry no opinion handling), [src/opinion.mjs](src/opinion.mjs) flags
+opinion and editorial content from signals already in the fetched data, no
+model: URL path segments (`/opinion/`, `/op-ed/`, `/perspectives/`,
+`/commentary/`, `/editorial/`, `/voices/`, `/column/` and their plurals), RSS
+`<category>` tags ("Opinion", "Editorial", "Comment", …), and byline patterns
+("Opinion by", "contributing columnist"). Flagged items get
+`contentType: "opinion"` and are **pulled out of the legitimacy pipeline
+entirely** — never tier-stamped, never merged into a story's sources, never
+counted as corroboration. The same guard covers Tavily discovery and the
+on-demand wire search.
 
 Because opinion pieces sit deep in section feeds (below the news of the
-hour), each feed also keeps up to 3 opinion-flagged entries from beyond its
-normal item cap — otherwise the head-slice almost never carries one.
+hour), each World/India feed also keeps up to 3 opinion-flagged entries from
+beyond its normal item cap — otherwise the head-slice almost never carries one.
 
-On the page, every section header has an **OPINION** toggle: the same
-page-flip used for section switches turns the sheet within the section to a
-"[SECTION] — OPINION" view listing the flagged items as brief entries with a
-neutral grayscale OPINION stamp (deliberately outside the trust-tier stamps),
-a one-line excerpt, and the source byline. Opinion items never appear in the
-regular news columns. A desk with no opinion pieces says so plainly instead
-of showing an empty layout.
+Two ways onto the page, both World/India only. **Per story:** a column that
+topically matches a news story (same title-overlap rule as dedupe) is pinned
+to it as a pointer list, and that story carries its own small "Opinion on
+this story (n)" button that unfolds the columns inline — matches are rare by
+nature, so most stories show nothing. **Per desk:** the section header's
+OPINION toggle turns the sheet (the same page-flip as a section switch) to a
+"[SECTION] — OPINION" view listing every flagged item as a brief entry with a
+neutral grayscale OPINION stamp, one-line excerpt, and source byline. Opinion
+items never appear in the regular news columns, and a desk with no opinion
+pieces says so plainly instead of showing an empty layout.
 
 ## Sources & quirks
 

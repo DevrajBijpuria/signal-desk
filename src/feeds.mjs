@@ -62,14 +62,16 @@ export async function fetchFeed(def, stats) {
     const xml = await fetchText(def.url, { timeoutMs: def.timeoutMs ?? 8000 });
     const parsed = parseFeed(xml);
     const cap = def.cap ?? 12;
+    // Opinion handling is per-desk (World + India only), so it's opt-in via
+    // def.opinion — the section builders set it, the FEEDS list stays clean.
     // Opinion pieces sit deep in section feeds (below the news of the hour),
     // so a plain head-slice almost never carries one — keep a few flagged
     // entries from beyond the cap; news volume itself stays capped as before.
+    const isOpinion = (e) =>
+      detectOpinion({ url: e.link, title: e.title, summary: e.summary, categories: e.categories });
     const entries = [
       ...parsed.slice(0, cap),
-      ...parsed.slice(cap)
-        .filter((e) => detectOpinion({ url: e.link, title: e.title, summary: e.summary, categories: e.categories }))
-        .slice(0, 3),
+      ...(def.opinion ? parsed.slice(cap).filter(isOpinion).slice(0, 3) : []),
     ];
     const items = entries.map((e) => {
       let title = e.title;
@@ -90,9 +92,7 @@ export async function fetchFeed(def, stats) {
       };
       // Opinion/editorial pieces are flagged at the source, while the feed's
       // <category> tags are still in hand — the tags don't travel further.
-      if (detectOpinion({ url: e.link, title, summary: e.summary, categories: e.categories })) {
-        item.contentType = "opinion";
-      }
+      if (def.opinion && isOpinion(e)) item.contentType = "opinion";
       return item;
     });
     stats.push({ id: def.id, ok: true, items: items.length, ms: Date.now() - started });
