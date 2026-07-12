@@ -1,5 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import { fetchText, hostOf, hashId, toIso, cleanText, decodeEntities, stripEmoji } from "./util.mjs";
+import { detectOpinion } from "./opinion.mjs";
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -30,6 +31,7 @@ export function parseFeed(xml) {
         publishedAt: toIso(textOf(item.pubDate ?? item["dc:date"] ?? "")),
         sourceName: src ? decodeEntities(textOf(src)).trim() : null,
         sourceUrl: src?.["@_url"] ?? null,
+        categories: asArray(item.category).map((c) => decodeEntities(textOf(c)).trim()).filter(Boolean),
       });
     }
   } else if (doc.feed) {
@@ -42,6 +44,7 @@ export function parseFeed(xml) {
         sourceName: null,
         sourceUrl: null,
         authors: asArray(entry.author).map((a) => textOf(a?.name)).filter(Boolean),
+        categories: asArray(entry.category).map((c) => textOf(c?.["@_term"] ?? c).trim()).filter(Boolean),
       });
     }
   }
@@ -57,7 +60,17 @@ export async function fetchFeed(def, stats) {
   const started = Date.now();
   try {
     const xml = await fetchText(def.url, { timeoutMs: def.timeoutMs ?? 8000 });
-    const entries = parseFeed(xml).slice(0, def.cap ?? 12);
+    const parsed = parseFeed(xml);
+    const cap = def.cap ?? 12;
+    // Opinion pieces sit deep in section feeds (below the news of the hour),
+    // so a plain head-slice almost never carries one — keep a few flagged
+    // entries from beyond the cap; news volume itself stays capped as before.
+    const entries = [
+      ...parsed.slice(0, cap),
+      ...parsed.slice(cap)
+        .filter((e) => detectOpinion({ url: e.link, title: e.title, summary: e.summary, categories: e.categories }))
+        .slice(0, 3),
+    ];
     const items = entries.map((e) => {
       let title = e.title;
       let sourceName = def.name;
@@ -67,7 +80,7 @@ export async function fetchFeed(def, stats) {
         sourceName = e.sourceName || def.name;
         domain = e.sourceUrl ? hostOf(e.sourceUrl) : domain;
       }
-      return {
+      const item = {
         id: hashId(e.link),
         title,
         url: e.link,
@@ -75,6 +88,12 @@ export async function fetchFeed(def, stats) {
         publishedAt: e.publishedAt,
         sources: [{ name: sourceName, domain, url: e.link }],
       };
+      // Opinion/editorial pieces are flagged at the source, while the feed's
+      // <category> tags are still in hand — the tags don't travel further.
+      if (detectOpinion({ url: e.link, title, summary: e.summary, categories: e.categories })) {
+        item.contentType = "opinion";
+      }
+      return item;
     });
     stats.push({ id: def.id, ok: true, items: items.length, ms: Date.now() - started });
     return items;

@@ -342,7 +342,10 @@ export async function enrichWithPulse(items, desk, stats = [], prevPulse = new M
   const deskCfg = CFG.desks[desk];
   if (!deskCfg) return items;
   const ctl = { backoff: false };
-  const targets = items.filter((i) => i.kind !== "commentary").slice(0, CFG.perDeskCap);
+  // Commentary and opinion sit outside the news flow — neither gets a pulse.
+  const targets = items
+    .filter((i) => i.kind !== "commentary" && i.contentType !== "opinion")
+    .slice(0, CFG.perDeskCap);
 
   // --- Bluesky, the primary source ---
   const handle = process.env.BLUESKY_HANDLE;

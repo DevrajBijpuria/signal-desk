@@ -98,6 +98,32 @@ rule matches, rather than invented.
 
 The tier map lives in [src/scoring.mjs](src/scoring.mjs) — extend it as you add sources.
 
+### Opinion detection & the OPINION flip view
+
+A column from a tier-1 outlet is a viewpoint, not a claim — legitimacy scoring
+shouldn't vouch for it. [src/opinion.mjs](src/opinion.mjs) flags opinion and
+editorial content from signals already in the fetched data, no model: URL path
+segments (`/opinion/`, `/op-ed/`, `/perspectives/`, `/commentary/`,
+`/editorial/`, `/voices/`, `/column/` and their plurals), RSS `<category>`
+tags ("Opinion", "Editorial", "Comment", …), and byline patterns ("Opinion
+by", "contributing columnist"). Flagged items get `contentType: "opinion"`
+and are **pulled out of the legitimacy pipeline entirely** — never
+tier-stamped, never merged into a story's sources, never counted as
+corroboration. This applies to all four sections; the same guard covers
+Tavily discovery and the on-demand wire search.
+
+Because opinion pieces sit deep in section feeds (below the news of the
+hour), each feed also keeps up to 3 opinion-flagged entries from beyond its
+normal item cap — otherwise the head-slice almost never carries one.
+
+On the page, every section header has an **OPINION** toggle: the same
+page-flip used for section switches turns the sheet within the section to a
+"[SECTION] — OPINION" view listing the flagged items as brief entries with a
+neutral grayscale OPINION stamp (deliberately outside the trust-tier stamps),
+a one-line excerpt, and the source byline. Opinion items never appear in the
+regular news columns. A desk with no opinion pieces says so plainly instead
+of showing an empty layout.
+
 ## Sources & quirks
 
 | Section | Sources | Notes |
