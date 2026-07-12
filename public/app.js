@@ -8,6 +8,7 @@ const state = {
   fromSeed: false,
   tab: "tech",
   esportsScope: "global",
+  view: "news", // "news" | "opinion" — the in-section flip view
   // reader-triggered Tavily search: daily pool, counted server-side
   wire: { enabled: false, remaining: 0, busy: false },
 };
@@ -187,6 +188,9 @@ const STAMP_TEXT = {
   low: { arc: "UNVERIFIED", word: "UNVERIFIED", filter: "stamp-rough-3" },
   // Not a trust tier — YouTube commentary never carries a legitimacy rating.
   commentary: { arc: "OPINION DESK", word: "COMMENTARY", filter: "stamp-rough-2" },
+  // Not a trust tier either — opinion/editorial items are pulled out of the
+  // legitimacy pipeline; the stamp is neutral grayscale, never High/Med/Low.
+  opinion: { arc: "EDITORIAL DESK", word: "OPINION", filter: "stamp-rough-2" },
 };
 
 let stampSeq = 0;
@@ -212,11 +216,14 @@ function injectStampDefs() {
 
 function stampHtml(item) {
   const isCommentary = item.kind === "commentary";
-  const level = isCommentary ? "commentary" : item.trust?.level ?? "low";
+  const isOpinion = item.contentType === "opinion";
+  const level = isCommentary ? "commentary" : isOpinion ? "opinion" : item.trust?.level ?? "low";
   const t = STAMP_TEXT[level] ?? STAMP_TEXT.low;
   const word = level === "low" && item.rumor ? "RUMOR" : t.word;
   const reason = isCommentary
     ? `Commentary from ${item.sources?.[0]?.name ?? "an independent channel"} — opinion and analysis, outside the legitimacy tiers; never counted as corroboration.`
+    : isOpinion
+    ? `Opinion/editorial from ${item.sources?.[0]?.name ?? "the wire"} — a viewpoint, not a claim: pulled out of the legitimacy tiers, never counted as corroboration.`
     : item.trust?.reason ?? "";
   const wordSize = word.length > 8 ? 10.5 : 13;
   const id = `stamp-arc-${++stampSeq}`;
@@ -226,7 +233,7 @@ function stampHtml(item) {
        <line x1="16" y1="76" x2="84" y2="30" stroke="currentColor" stroke-width="3.5" opacity="0.8"/>`
     : "";
   return `<span class="stampc stampc--${esc(level)}" role="img"
-      aria-label="${isCommentary ? "Commentary" : "Legitimacy"}: ${esc(word)} — ${esc(t.arc)}. ${esc(reason)}"
+      aria-label="${isCommentary ? "Commentary" : isOpinion ? "Opinion" : "Legitimacy"}: ${esc(word)} — ${esc(t.arc)}. ${esc(reason)}"
       title="${esc(reason)}">
     <svg viewBox="0 0 100 100" aria-hidden="true">
       <g filter="url(#${t.filter})">
@@ -392,17 +399,60 @@ function storyHtml(item, { brief = false, secondary = false } = {}) {
 const INDIA_BRIEF_TAG = (item) =>
   (item.tags ?? []).some((t) => t !== "Government") && (item.tags ?? []).length > 0;
 
+/* ---------- the OPINION flip view ----------
+   Same section, other side of the sheet: every item stamped OPINION (neutral
+   grayscale — these were pulled out of the trust tiers on purpose), set as
+   brief-style entries in the shared aligned column grid: headline, one-line
+   excerpt, source byline. Importance ranking doesn't apply; recency order. */
+
+function opinionEntryHtml(item) {
+  const excerpt = deckFor(item);
+  return `
+    <article class="story story--opinion">
+      ${stampHtml(item)}
+      <h3 class="headline"><a href="${esc(safeUrl(item.url))}" target="_blank" rel="noopener">${esc(deEmoji(item.title))}</a></h3>
+      ${excerpt ? `<p class="story-summary opinion-excerpt">${esc(excerpt)}</p>` : ""}
+      ${bylineHtml(item)}
+    </article>`;
+}
+
+function renderOpinionBoard(items) {
+  if (!items.length) {
+    board.innerHTML = `
+      <div class="state">
+        <div class="state-title">No Opinion Pieces</div>
+        <p>Nothing on this desk carried an opinion or editorial marking this press run.
+           The desk sweeps a few times a day — columns print here when the wires carry them.</p>
+      </div>`;
+    return;
+  }
+  const cols = columnCount();
+  const pad = (cols - (items.length % cols)) % cols;
+  const fillers = '<div class="story story--filler" aria-hidden="true"></div>'.repeat(pad);
+  board.innerHTML = `<div class="columns">${items.map(opinionEntryHtml).join("")}${fillers}</div>`;
+}
+
 function renderBoard() {
   const meta = SECTION_META[state.tab];
-  sectionBanner.textContent = meta.banner;
-  deskLine.textContent = meta.desk;
+  const opinionView = state.view === "opinion";
+  sectionBanner.textContent = opinionView ? `${meta.banner} — OPINION` : meta.banner;
+  deskLine.textContent = opinionView
+    ? "Columns and editorials — viewpoints, not claims. Pulled out of the trust tiers; they corroborate nothing."
+    : meta.desk;
   scopeBar.hidden = state.tab !== "esports";
   fitBanner(sectionBanner);
+  renderOpinionToggle();
 
   let items = state.data?.sections?.[state.tab] ?? [];
   if (state.tab === "esports" && state.esportsScope === "india") {
     items = items.filter((i) => i.scope === "india");
   }
+  if (opinionView) {
+    renderOpinionBoard(items.filter((i) => i.contentType === "opinion"));
+    return;
+  }
+  // opinion items live behind the OPINION flip, never in the news flow
+  items = items.filter((i) => i.contentType !== "opinion");
   if (!items.length) {
     const copy = state.tab === "esports" && state.esportsScope === "india"
       ? "No India-edition sports signals in the stored sweep. Turn to the Global edition, or wait for the next press run."
@@ -608,9 +658,31 @@ function selectTab(tab) {
   board.setAttribute("aria-labelledby", tab.id);
   flipToNewPage(() => {
     state.tab = tab.dataset.tab;
+    state.view = "news"; // a new section always opens on its news side
     renderBoard();
   });
 }
+
+/* ---------- the OPINION toggle: flip within the section ----------
+   The same page-turn as a section switch, but the sheet lands on the
+   section's own opinion side. Reduced motion follows the established flip
+   behavior (skip to an instant cut). */
+
+const opinionBtn = document.getElementById("opinion-toggle");
+
+function renderOpinionToggle() {
+  const opinionView = state.view === "opinion";
+  opinionBtn.textContent = opinionView ? `Back to ${SECTION_META[state.tab].banner}` : "Opinion";
+  opinionBtn.setAttribute("aria-pressed", String(opinionView));
+}
+
+opinionBtn.addEventListener("click", () => {
+  if (!state.data) return;
+  flipToNewPage(() => {
+    state.view = state.view === "opinion" ? "news" : "opinion";
+    renderBoard();
+  });
+});
 
 scopeBar.querySelectorAll("button").forEach((btn) => {
   btn.addEventListener("click", () => {

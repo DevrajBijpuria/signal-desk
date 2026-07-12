@@ -50,6 +50,7 @@ Scheduled Netlify function (cron 4×/day)  →  fetch + dedupe + score + tag
 | `netlify/functions/tavily-fetch.mjs` | "Search the wire" endpoint: GET = quota, POST ?section= runs one on-demand query and merges into the stored blob via `mergeManualDiscovery` (pipeline.mjs). Key never reaches the client; button hides when env vars are unset. |
 | `src/commentary.mjs` + `src/commentary-channels.mjs` | YouTube channel-RSS commentary layer. **The channel list lives in commentary-channels.mjs — edit there only.** Commentary sits outside the trust tiers: attached post-scoring (`item.commentary[]` on a matched story, `kind:"commentary"` standalone), never corroborates, never stamped High/Med/Low. |
 | `src/pulse.mjs` + `src/pulseConfig.mjs` + `src/sentimentLexicon.mjs` | Public Pulse: Bluesky (+optional Mastodon, World only, `MASTODON_ENABLED=true`) reader reaction on World/India ONLY — enrichment runs in refresh-news.mjs after scoring, before the blob write; Tech/Esports untouched. Env-gated (`BLUESKY_HANDLE`+`BLUESKY_APP_PASSWORD`, app password not the login). AFINN-165 lexicon sentiment, rule-based matching, `pulse:{found:false}` on no match. **Tuning knobs live in pulseConfig.mjs.** |
+| `src/opinion.mjs` | Opinion/editorial detection (URL path segments, RSS `<category>` tags, byline patterns — no model). Flagged items get `contentType:"opinion"`, never enter dedupe/scoring/corroboration, and render only behind the per-section OPINION flip view. Applies to ALL four sections; guards exist in finish(), buildEsports, mergeManualDiscovery, attachCommentary, and pulse targets. |
 | `netlify/functions/refresh-news.mjs` | The scheduled sweep. Cron in `export const config`. |
 | `scripts/run-pipeline.mjs` | Runs the pipeline once → `public/data/seed.json` (used by `npm run pipeline` and the build). |
 | `scripts/build-tokens.mjs` | `design/tokens.json` → `public/tokens.css`. **`FONT_SUBS` maps commercial faces → free Google Fonts.** Re-run after editing tokens. |
@@ -108,6 +109,12 @@ settled and verified. Frontend re-themes should leave `src/**` and
   legitimately sparse on quiet days — engaged India discussion exists but
   often falls outside the 3-day recency window; `found:false` is correct, not
   a bug.
+- **Opinion pieces sit deep in section feeds**, below the news of the hour, so
+  a plain head-slice at the feed cap almost never carries one (live-verified:
+  Al Jazeera's one `/opinions/` item sat at position ~17 vs. cap 10). fetchFeed
+  therefore keeps up to 3 opinion-flagged entries from beyond the cap. The
+  configured India feeds are news-section feeds, so India opinion is often
+  legitimately zero — the empty state is correct, not a detection bug.
 
 ## Frontend — the Miranda broadsheet
 
