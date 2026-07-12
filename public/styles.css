@@ -418,6 +418,33 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* per-story opinion: a small unfolding note under the byline (World + India) */
+.story-opinions { margin-top: var(--sp-4); }
+.opinion-btn {
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease;
+}
+.opinion-btn:hover { color: var(--color-pure-black); text-decoration-thickness: 1.5px; }
+.opinion-btn[aria-expanded="true"] { color: var(--color-pure-black); }
+.story-opinion-list {
+  border-left: 2px solid var(--color-charcoal);
+  padding-left: var(--sp-10);
+  margin-top: var(--sp-4);
+}
+.story-opinion-row {
+  font-size: 13px;
+  line-height: 1.5;
+  font-style: italic;
+  overflow-wrap: anywhere;
+  margin: 0 0 var(--sp-4);
+}
+.story-opinion-row a { text-decoration: underline; text-underline-offset: 3px; transition: color 0.15s ease; }
+.story-opinion-row a:hover { color: var(--color-pure-black); text-decoration-thickness: 1.5px; }
 .stamp-arc-text {
   font-family: var(--font-editorial-new);
   font-size: 9px;
