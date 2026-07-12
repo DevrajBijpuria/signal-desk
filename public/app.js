@@ -103,6 +103,13 @@ function importance(item) {
   }
   if ((item.summary ?? "").length >= 80) s += 1;            // the wire sent real copy
   if (item.rumor) s -= 1;                                   // rumors never lead
+  // Public Pulse: a small, capped nudge for genuinely discussed stories —
+  // legitimacy stays dominant (high trust alone is worth 5), so a Low item
+  // can never outrank a Verified one just for being talked about.
+  if (item.pulse?.found) {
+    const engaged = (item.pulse.like_count ?? 0) + (item.pulse.reply_count ?? 0);
+    if (engaged >= 50 || item.pulse.controversial) s += 1;
+  }
   return s;
 }
 
@@ -293,6 +300,34 @@ function commentaryHtml(item) {
   return `<p class="commentary-links">Commentary: ${links.join(" · ")}</p>`;
 }
 
+/* ---------- Public Pulse: the letters/marginalia clipping ----------
+   Reader reaction from Bluesky (World + India) or Mastodon (World only),
+   pinned to the story like a clipped letter to the editor. Renders ONLY when
+   pulse.found — no match, no mark, same "omitted rather than invented"
+   philosophy as the market wire. Tone and framing stay two separately
+   labeled lines, never one number; framing always carries its disclosure. */
+
+function pulseHtml(item) {
+  const p = item.pulse;
+  if (!p?.found) return "";
+  const likes = p.like_count ?? 0;
+  const replies = p.reply_count ?? 0;
+  const tone = p.reaction_tone;
+  const fr = p.framing_alignment;
+  const srcName = p.source === "mastodon" ? "Mastodon" : "Bluesky";
+  const note = fr?.note ?? "approximation — reply tone vs. headline tone, not a stance classifier";
+  return `<aside class="pulse" aria-label="Public Pulse — reader reaction, not a legitimacy rating">
+      <div class="pulse-head">Public Pulse
+        ${p.controversial ? `<span class="pulse-contested" title="Split or quote-heavy reaction — readers are divided">Contested</span>` : ""}
+      </div>
+      <p class="pulse-line">${likes} likes · ${replies} replies on the matched post</p>
+      ${tone?.sample_size ? `<p class="pulse-line">Reaction Tone: ${tone.positive_pct}% positive · ${tone.negative_pct}% negative · ${tone.neutral_pct}% neutral <span class="pulse-n">(${tone.sample_size} replies)</span></p>` : ""}
+      ${fr?.sample_size ? `<p class="pulse-line">Framing Alignment: ${fr.aligned_pct}% aligned · ${fr.pushback_pct}% pushback (approx.)
+        <span class="pulse-info" tabindex="0" role="note" aria-label="${esc(note)}" title="${esc(note)}">ⓘ</span></p>` : ""}
+      <a class="pulse-link" href="${esc(safeUrl(p.post_url))}" target="_blank" rel="noopener">Discussed on ${srcName} →</a>
+    </aside>`;
+}
+
 /* Pull quote only when the story actually contains one — a real quotation
    in the wire copy, not manufactured emphasis. */
 function pullQuote(summary) {
@@ -329,6 +364,7 @@ function leadHtml(item) {
           ${reasonHtml(item)}
           ${commentaryHtml(item)}
           ${marketHtml(item)}
+          ${pulseHtml(item)}
         </div>
       </div>
     </article>`;
@@ -349,6 +385,7 @@ function storyHtml(item, { brief = false, secondary = false } = {}) {
       ${bylineHtml(item)}
       ${commentaryHtml(item)}
       ${showReason ? reasonHtml(item) : ""}
+      ${brief ? "" : pulseHtml(item)}
     </article>`;
 }
 
