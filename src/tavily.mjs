@@ -29,7 +29,37 @@ const USAGE_KEY = "tavily-usage";
 const SAFETY_MARGIN = 0.9;
 const CREDITS_PER_QUERY = 1; // Tavily bills basic-depth search at 1 credit per request
 
+// Reader-triggered "search the wire" fetches share this daily pool across all
+// sections; it resets each UTC day. Manual spend also counts against the same
+// monthly ledger, so the 90% cap holds no matter who clicks how often.
+export const MANUAL_DAILY_CAP = 20;
+
 const monthKey = (d) => d.toISOString().slice(0, 7);
+const dayKey = (d) => d.toISOString().slice(0, 10);
+
+/**
+ * Read the ledger and roll it forward: a new month resets creditsUsed and
+ * manualUsed; a new day resets manualUsed only. Always returns the full
+ * normalized shape { month, creditsUsed, day, manualUsed }.
+ */
+export async function readLedger(store, now = new Date()) {
+  const stored = await store.get(USAGE_KEY, { type: "json" });
+  const month = monthKey(now);
+  const day = dayKey(now);
+  if (!stored || stored.month !== month) return { month, creditsUsed: 0, day, manualUsed: 0 };
+  return {
+    month,
+    creditsUsed: stored.creditsUsed ?? 0,
+    day,
+    manualUsed: stored.day === day ? stored.manualUsed ?? 0 : 0,
+  };
+}
+
+/** Manual fetches left today: the daily pool, never past the monthly cap. */
+export function manualRemaining(ledger, ceiling) {
+  const monthlyLeft = Math.floor(ceiling * SAFETY_MARGIN) - ledger.creditsUsed;
+  return Math.max(0, Math.min(MANUAL_DAILY_CAP - ledger.manualUsed, monthlyLeft));
+}
 
 export function daysLeftInMonth(now = new Date()) {
   const lastDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
@@ -71,6 +101,14 @@ function toItem(r) {
   };
 }
 
+/** One section's fixed query, on demand (the reader-triggered path). */
+export async function runSectionQuery(apiKey, section) {
+  const q = TAVILY_QUERIES.find((x) => x.section === section);
+  if (!q) throw new Error(`unknown section: ${section}`);
+  const data = await searchTavily(apiKey, q.query);
+  return (data.results ?? []).map(toItem).filter((i) => i.title && i.url);
+}
+
 /**
  * Runs the affordable slice of TAVILY_QUERIES and returns items keyed by
  * section: { tech, geopolitics, india, esportsGlobal, esportsIndia }.
@@ -90,26 +128,25 @@ export async function fetchTavilyDiscovery(stats) {
 
   // No reachable ledger ⇒ no spend. The budget lock is only as good as the
   // store behind it, so an unreadable ledger disables the layer for the run.
-  let store, stored;
+  let store, ledger;
   try {
     store = getStore("news-desk");
-    stored = await store.get(USAGE_KEY, { type: "json" });
+    ledger = await readLedger(store);
   } catch (err) {
     stats.push({ id: "tavily", ok: false, error: `skipped — budget store unavailable (${err.message})` });
     return empty;
   }
 
-  const month = monthKey(new Date());
-  const creditsUsed = stored?.month === month ? stored.creditsUsed : 0;
-
-  const allowance = runAllowance(ceiling, creditsUsed);
+  const allowance = runAllowance(ceiling, ledger.creditsUsed);
   const affordable = Math.min(TAVILY_QUERIES.length, Math.floor(allowance / CREDITS_PER_QUERY));
   const run = TAVILY_QUERIES.slice(0, affordable);
   for (const q of TAVILY_QUERIES.slice(affordable)) {
     stats.push({ id: q.id, ok: false, error: "skipped — Tavily monthly budget spent" });
   }
 
-  const usage = { month, creditsUsed: creditsUsed + run.length * CREDITS_PER_QUERY };
+  // Preserves the day/manualUsed fields — the scheduled run never resets the
+  // reader's daily search pool.
+  const usage = { ...ledger, creditsUsed: ledger.creditsUsed + run.length * CREDITS_PER_QUERY };
 
   const out = { ...empty };
   await Promise.all(
