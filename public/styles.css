@@ -216,6 +216,19 @@ button {
 }
 .edition-sep { font-size: 15px; }
 
+/* reader-triggered Tavily search — an edition-line control, not a web pill */
+.wire-search {
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease;
+}
+.wire-search:hover { color: var(--color-pure-black); text-decoration-thickness: 1.5px; }
+.wire-search[disabled] { opacity: 0.55; cursor: default; text-decoration: none; }
+.wire-search[hidden] { display: none; }
+
 /* ============ the board ============ */
 .board { position: relative; padding-top: var(--sp-22); min-height: 320px; }
 

@@ -126,11 +126,21 @@ layer: if `TAVILY_API_KEY` or `TAVILY_MONTHLY_CREDITS` is unset, or the Blobs
 budget ledger is unreachable, the run proceeds on RSS/API/YouTube alone.
 
 Budget lock: spend is capped at **90% of `TAVILY_MONTHLY_CREDITS`**. Usage lives
-in Blobs (`tavily-usage`: `{ month, creditsUsed }`, reset on month rollover); each
-run may spend `(cappedCeiling − creditsUsed) / daysLeftInMonth`, so skipped runs
-roll their budget forward. Queries run in priority order (tech → geo → India →
-esports global → esports India) and stop when the allowance is out; a partial run
-never blocks the rest of the sweep. Every attempted request counts as spent.
+in Blobs (`tavily-usage`: `{ month, creditsUsed, day, manualUsed }`; creditsUsed
+resets on month rollover, manualUsed each UTC day); each scheduled run may spend
+`(cappedCeiling − creditsUsed) / daysLeftInMonth`, so skipped runs roll their
+budget forward. Queries run in priority order (tech → geo → India → esports
+global → esports India) and stop when the allowance is out; a partial run never
+blocks the rest of the sweep. Every attempted request counts as spent.
+
+**Search the wire (on-demand):** every section header carries a
+"Search the wire · N left today" button — one click runs that section's query
+right now (the Sports page searches its current edition) via
+`netlify/functions/tavily-fetch.mjs` and merges the results into the stored
+sweep with the same corroborate-or-new-item semantics. The key stays
+server-side. Clicks draw from a shared daily pool (20/day, resets each UTC
+day) that also counts against the monthly ledger, so readers can never blow
+the cap. When the layer is off (no env vars), the button never appears.
 
 ## YouTube commentary (no key needed)
 

@@ -8,6 +8,8 @@ const state = {
   fromSeed: false,
   tab: "tech",
   esportsScope: "global",
+  // reader-triggered Tavily search: daily pool, counted server-side
+  wire: { enabled: false, remaining: 0, busy: false },
 };
 
 const SECTION_META = {
@@ -589,5 +591,64 @@ scopeBar.querySelectorAll("button").forEach((btn) => {
 
 refreshBtn.addEventListener("click", () => load({ sweep: true }));
 
+/* ---------- search the wire: reader-triggered Tavily fetch ----------
+   One click = one basic search for the open section (the Sports page searches
+   its current edition). The key lives server-side; the count is a shared
+   daily pool that resets each UTC day and still draws down the same monthly
+   budget ledger as the scheduled sweeps. Button hidden when the layer is off. */
+
+const wireBtn = document.getElementById("tavily-fetch");
+
+function renderWireBtn(text) {
+  if (!state.wire.enabled) return;
+  const n = state.wire.remaining;
+  wireBtn.disabled = state.wire.busy || n <= 0;
+  wireBtn.textContent =
+    text ?? (n > 0 ? `Search the wire · ${n} left today` : "Wire searches spent — fresh pool tomorrow");
+}
+
+async function initWireSearch() {
+  try {
+    const res = await fetch("/api/tavily-fetch");
+    if (!res.ok) return;
+    const info = await res.json();
+    if (!info.enabled) return;
+    state.wire.enabled = true;
+    state.wire.remaining = info.remaining;
+    wireBtn.hidden = false;
+    renderWireBtn();
+  } catch { /* endpoint unreachable — the button stays hidden */ }
+}
+
+async function wireSearch() {
+  if (state.wire.busy || state.wire.remaining <= 0 || !state.data) return;
+  const section = state.tab === "esports"
+    ? (state.esportsScope === "india" ? "esportsIndia" : "esportsGlobal")
+    : state.tab;
+  state.wire.busy = true;
+  renderWireBtn("Searching the wire…");
+  let note = "The wire did not answer";
+  try {
+    const res = await fetch(`/api/tavily-fetch?section=${section}`, { method: "POST" });
+    const out = await res.json().catch(() => ({}));
+    if (typeof out.remaining === "number") state.wire.remaining = out.remaining;
+    if (res.ok && out.items) {
+      state.data.sections[out.sectionKey] = out.items;
+      renderBoard();
+      note = out.added || out.corroborated
+        ? `Wire answered: ${out.added} new · ${out.corroborated} corroborated`
+        : "Wire answered: nothing new for this page";
+    } else if (out.error) {
+      note = `The wire: ${out.error}`;
+    }
+  } catch { /* note stays "did not answer" */ }
+  state.wire.busy = false;
+  renderWireBtn(note);
+  setTimeout(() => renderWireBtn(), 2800);
+}
+
+wireBtn.addEventListener("click", wireSearch);
+
 injectStampDefs();
 load();
+initWireSearch();

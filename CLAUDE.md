@@ -46,7 +46,8 @@ Scheduled Netlify function (cron 4×/day)  →  fetch + dedupe + score + tag
 | `src/feeds.mjs` | RSS/Atom fetch + parse (fast-xml-parser); strips emoji from titles. |
 | `src/scoring.mjs` | The tier map + High/Med/Low + corroboration bump. **Extend the tier map here when adding sources.** |
 | `src/esports.mjs` | Liquipedia scraping (one spaced queue, budgeted), EWC pages, Dexerto/DotEsports rumor layer. `LP_UA` holds the contact email. |
-| `src/tavily.mjs` | Optional Tavily discovery: 5 fixed queries/run (basic depth), env-gated, Blobs budget ledger (`tavily-usage`) capped at 90% of the monthly plan, allowance spread over days left in the month. Results enter the normal dedupe+score path. |
+| `src/tavily.mjs` | Optional Tavily discovery: 5 fixed queries/run (basic depth), env-gated, Blobs budget ledger (`tavily-usage`) capped at 90% of the monthly plan, allowance spread over days left in the month. Results enter the normal dedupe+score path. Also holds the reader-facing daily pool (`MANUAL_DAILY_CAP` 20/day, `manualUsed` resets each UTC day). |
+| `netlify/functions/tavily-fetch.mjs` | "Search the wire" endpoint: GET = quota, POST ?section= runs one on-demand query and merges into the stored blob via `mergeManualDiscovery` (pipeline.mjs). Key never reaches the client; button hides when env vars are unset. |
 | `src/commentary.mjs` + `src/commentary-channels.mjs` | YouTube channel-RSS commentary layer. **The channel list lives in commentary-channels.mjs — edit there only.** Commentary sits outside the trust tiers: attached post-scoring (`item.commentary[]` on a matched story, `kind:"commentary"` standalone), never corroborates, never stamped High/Med/Low. |
 | `netlify/functions/refresh-news.mjs` | The scheduled sweep. Cron in `export const config`. |
 | `scripts/run-pipeline.mjs` | Runs the pipeline once → `public/data/seed.json` (used by `npm run pipeline` and the build). |

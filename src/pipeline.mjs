@@ -257,19 +257,68 @@ async function buildEsports(stats, tavilyP) {
       }
     }
   }
-  return items.map(scoreItem).map((item) => {
-    // Rumors never present as settled fact: force Low unless a tier-1 source
-    // (org channel, confirmed Liquipedia entry) corroborates the story.
-    if (item.rumor && item.trust.tier > 1) {
-      const outlet = item.sources[0]?.name ?? "a single outlet";
-      item.trust = {
-        level: "low",
-        tier: item.trust.tier,
-        reason: `Transfer rumor — single unconfirmed report (${outlet}). Not corroborated by an official channel or a confirmed Liquipedia entry.`,
-      };
+  return items.map(scoreItem).map(applyRumorRule);
+}
+
+// Rumors never present as settled fact: force Low unless a tier-1 source
+// (org channel, confirmed Liquipedia entry) corroborates the story.
+function applyRumorRule(item) {
+  if (item.rumor && item.trust.tier > 1) {
+    const outlet = item.sources[0]?.name ?? "a single outlet";
+    item.trust = {
+      level: "low",
+      tier: item.trust.tier,
+      reason: `Transfer rumor — single unconfirmed report (${outlet}). Not corroborated by an official channel or a confirmed Liquipedia entry.`,
+    };
+  }
+  return item;
+}
+
+/**
+ * Reader-triggered Tavily merge into an ALREADY-SCORED stored sweep (the
+ * scheduled path merges pre-scoring via finish() instead). Same semantics:
+ * a title match gains a corroborating source and is re-scored; anything new
+ * is scored through the tier map and section-tagged. Commentary items are
+ * never match candidates. Mutates `sections`; returns { added, corroborated }.
+ */
+export function mergeManualDiscovery(sections, querySection, discovered) {
+  const TARGET = {
+    tech: { key: "tech" },
+    geopolitics: { key: "geopolitics" },
+    india: { key: "india" },
+    esportsGlobal: { key: "esports", scope: "global" },
+    esportsIndia: { key: "esports", scope: "india" },
+  };
+  const { key, scope } = TARGET[querySection];
+  const items = sections[key];
+  let added = 0, corroborated = 0;
+  for (const d of discovered) {
+    if (key === "geopolitics" && NOT_GEOPOLITICS.test(d.title)) continue;
+    const dTokens = titleTokens(d.title);
+    const match = items.find((it) => it.kind !== "commentary" && similarTitles(titleTokens(it.title), dTokens));
+    if (match) {
+      const s = d.sources[0];
+      if (match.sources.some((k) => k.domain === s.domain)) continue; // already on the story
+      match.sources.push(s);
+      scoreItem(match);
+      if (key === "esports") applyRumorRule(match);
+      corroborated++;
+    } else {
+      scoreItem(d);
+      if (key === "tech") classifyTech(d);
+      else if (key === "india") tagIndia(d);
+      else if (key === "geopolitics") {
+        const m = marketNote(`${d.title} ${d.summary}`);
+        if (m) d.market = m;
+      } else if (key === "esports") {
+        d.scope = scope;
+        d.tags = [];
+      }
+      items.push(d);
+      added++;
     }
-    return item;
-  });
+  }
+  return { added, corroborated };
 }
 
 export async function runPipeline() {
