@@ -91,7 +91,11 @@ settled and verified. Frontend re-themes should leave `src/**` and
 - **Tavily runs in parallel with the section builders** (a shared promise each
   builder awaits), never serially before them — serial would stack ~8s on the 24s
   esports budget and threaten the 30s cap. Attempted requests count as spent,
-  success or failure.
+  success or failure. Live-verified 2026-07-12: ~0.8–2.7s per basic query, five
+  concurrent is fine. Quirk: the **first** sweep after a fresh `netlify dev` start
+  can abort all five at the 8s timeout (cold-start artifact of the local runner —
+  direct API calls are fast); the retry runs clean. Those aborted calls still
+  count as spent — correct, conservative.
 
 ## Frontend — the Miranda broadsheet
 
