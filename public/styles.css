@@ -445,6 +445,30 @@ button {
 }
 .story-opinion-row a { text-decoration: underline; text-underline-offset: 3px; transition: color 0.15s ease; }
 .story-opinion-row a:hover { color: var(--color-pure-black); text-decoration-thickness: 1.5px; }
+
+/* real reader replies, separated for/against by reply tone */
+.story-voices { margin-top: var(--sp-7); }
+.voices-head {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin: var(--sp-7) 0 var(--sp-4);
+}
+.voices-head--for::before { content: "▲ "; }
+.voices-head--against::before { content: "▼ "; }
+.voice {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 var(--sp-4);
+  overflow-wrap: anywhere;
+}
+.voice-author { font-style: italic; opacity: 0.8; }
+.voices-note {
+  font-size: 12px;
+  font-style: italic;
+  opacity: 0.75;
+  margin: var(--sp-4) 0 0;
+}
 .stamp-arc-text {
   font-family: var(--font-editorial-new);
   font-size: 9px;

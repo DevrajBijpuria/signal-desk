@@ -35,6 +35,7 @@ export const PULSE_CONFIG = {
   candidateMinEngagement: 3,
 
   replyCap: 18,              // top-level replies sampled for sentiment, by likes
+  voicesPerSide: 4,          // real reader replies kept per side (for/against) on a story
 
   // Per-call timeout. The Pulse stage runs after the 8–17s pipeline inside the
   // same 30s scheduled function, so calls stay tight; phases run in parallel.
