@@ -117,11 +117,14 @@ Because opinion pieces sit deep in section feeds (below the news of the
 hour), each World/India feed also keeps up to 3 opinion-flagged entries from
 beyond its normal item cap — otherwise the head-slice almost never carries one.
 
-Two ways onto the page, both World/India only. **Per story:** a column that
-topically matches a news story (same title-overlap rule as dedupe) is pinned
-to it as a pointer list, and that story carries its own small "Opinion on
-this story (n)" button that unfolds the columns inline — matches are rare by
-nature, so most stories show nothing. **Per desk:** the section header's
+Two ways onto the page, both World/India only. **Per story:** the "Opinion on
+this story (n)" button unfolds two kinds of voices inline — columns that
+topically match the story (same title-overlap rule as dedupe, pinned as
+pointers), and **real reader replies from the story's matched Pulse thread,
+separated "Readers for" / "Readers against" by reply tone** (top-liked first,
+capped per side, quoted with author and like count, and always carrying the
+disclosure that tone-grouping is an approximation, not a stance classifier).
+Stories with neither show no button. **Per desk:** the section header's
 OPINION toggle turns the sheet (the same page-flip as a section switch) to a
 "[SECTION] — OPINION" view listing every flagged item as a brief entry with a
 neutral grayscale OPINION stamp, one-line excerpt, and source byline. Opinion

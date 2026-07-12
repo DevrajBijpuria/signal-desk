@@ -336,20 +336,39 @@ function pulseHtml(item) {
 }
 
 /* ---------- per-story opinion (World + India) ----------
-   Columns that topically match a story arrive as story.opinions[] — pointers
-   only, never sources, never scored. Each such story carries its own small
-   OPINION button that unfolds the columns inline; stories without a match
-   show nothing. The full desk-wide list stays behind the header's OPINION
-   flip. */
+   Two kinds of voices fold out of a story's own OPINION button:
+   1. Columns that topically match the story (story.opinions[]) — pointers
+      only, never sources, never scored.
+   2. Real reader replies from the story's matched Pulse thread
+      (pulse.voices), separated FOR / AGAINST by reply tone — the same
+      lexicon as the pulse aggregates, disclosed as an approximation.
+   Stories with neither show nothing. The full desk-wide column list stays
+   behind the header's OPINION flip. */
+
+function voicesSideHtml(label, cls, messages) {
+  if (!messages?.length) return "";
+  const rows = messages.map((m) =>
+    `<p class="voice">“${esc(deEmoji(m.text))}”<span class="voice-author"> — @${esc(m.author)}${m.likes ? ` · ${m.likes} likes` : ""}</span></p>`).join("");
+  return `<p class="voices-head voices-head--${cls}">${label}</p>${rows}`;
+}
 
 function storyOpinionsHtml(item) {
-  const ops = item.opinions;
-  if (!ops?.length) return "";
-  const rows = ops.slice(0, 3).map((o) =>
+  const ops = item.opinions ?? [];
+  const v = item.pulse?.voices;
+  const voiceCount = (v?.for?.length ?? 0) + (v?.against?.length ?? 0);
+  if (!ops.length && !voiceCount) return "";
+  const colRows = ops.slice(0, 3).map((o) =>
     `<p class="story-opinion-row"><a href="${esc(safeUrl(o.url))}" target="_blank" rel="noopener">${esc(o.source)} — “${esc(deEmoji(o.title))}”</a></p>`).join("");
+  const voices = voiceCount
+    ? `<div class="story-voices">
+        ${voicesSideHtml("Readers for", "for", v.for)}
+        ${voicesSideHtml("Readers against", "against", v.against)}
+        <p class="voices-note">${esc(v.note ?? "grouped by reply tone — an approximation, not a stance classifier")}</p>
+      </div>`
+    : "";
   return `<div class="story-opinions">
-      <button type="button" class="opinion-btn" aria-expanded="false">Opinion on this story (${ops.length})</button>
-      <div class="story-opinion-list" hidden>${rows}</div>
+      <button type="button" class="opinion-btn" aria-expanded="false">Opinion on this story (${ops.length + voiceCount})</button>
+      <div class="story-opinion-list" hidden>${colRows}${voices}</div>
     </div>`;
 }
 

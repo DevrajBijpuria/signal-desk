@@ -149,6 +149,24 @@ export function aggregateFraming(headline, texts) {
   };
 }
 
+/** Real reader voices, separated For / Against by reply tone sign (positive →
+    for, negative → against) — the same lexicon as everything else, no model.
+    An approximation by nature; the disclosure ships in the object and the UI.
+    Neutral replies belong to neither side. Top-liked first, capped per side. */
+export function buildVoices(replies) {
+  const pick = (sign) =>
+    replies
+      .filter((r) => Math.sign(toneScore(r.text) ?? 0) === sign)
+      .sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0))
+      .slice(0, CFG.voicesPerSide)
+      .map((r) => ({ text: String(r.text).slice(0, 280), author: r.author ?? "", likes: r.likes ?? 0 }));
+  return {
+    for: pick(1),
+    against: pick(-1),
+    note: "real replies from the matched thread, grouped by reply tone — an approximation, not a stance classifier",
+  };
+}
+
 /** Contested content: split tone, or quote-heavy engagement (Bluesky's quote
     culture skews commentary/pushback over plain approval). */
 export function isControversial(tone, likeCount, quoteCount) {
@@ -180,11 +198,18 @@ function threadReplies(thread) {
     .filter((r) => r.$type === THREAD_VIEW && r.post?.record?.text)
     .sort((a, b) => (b.post.likeCount ?? 0) - (a.post.likeCount ?? 0))
     .slice(0, CFG.replyCap)
-    .map((r) => r.post.record.text);
+    .map((r) => ({
+      text: r.post.record.text,
+      author: r.post.author?.handle ?? "",
+      likes: r.post.likeCount ?? 0,
+    }));
 }
 
-function buildPulse(item, { source, post_uri, post_url, author_handle, post_text, like_count, repost_count, reply_count, quote_count }, replyTexts) {
-  const tone = aggregateTone(replyTexts);
+// `replies` are { text, author, likes } objects; the aggregates read the
+// texts, the voices keep the real messages.
+function buildPulse(item, { source, post_uri, post_url, author_handle, post_text, like_count, repost_count, reply_count, quote_count }, replies) {
+  const texts = replies.map((r) => r.text);
+  const tone = aggregateTone(texts);
   return {
     found: true,
     source,
@@ -197,13 +222,14 @@ function buildPulse(item, { source, post_uri, post_url, author_handle, post_text
     reply_count: reply_count ?? 0,
     quote_count: quote_count ?? 0,
     reaction_tone: tone,
-    framing_alignment: aggregateFraming(item.title, replyTexts),
+    framing_alignment: aggregateFraming(item.title, texts),
+    voices: buildVoices(replies),
     controversial: isControversial(tone, like_count, quote_count),
     fetched_at: new Date().toISOString(),
   };
 }
 
-/** Public getPostThread → { post, replyTexts } or null. Sets ctl.backoff on 429. */
+/** Public getPostThread → { post, replies } or null. Sets ctl.backoff on 429. */
 async function fetchThread(uri, ctl) {
   const { status, data } = await getJson(
     `https://public.api.bsky.app/xrpc/app.bsky.feed.getPostThread?uri=${encodeURIComponent(uri)}&depth=1`
@@ -211,7 +237,7 @@ async function fetchThread(uri, ctl) {
   if (status === 429) { ctl.backoff = true; return null; }
   if (status !== 200 || data?.thread?.$type !== THREAD_VIEW) return null;
   if (hasAdultLabel(data.thread.post)) return null;
-  return { post: data.thread.post, replyTexts: threadReplies(data.thread) };
+  return { post: data.thread.post, replies: threadReplies(data.thread) };
 }
 
 async function enrichItemBluesky(item, deskCfg, jwt, ctl, prev) {
@@ -226,7 +252,7 @@ async function enrichItemBluesky(item, deskCfg, jwt, ctl, prev) {
         author_handle: p.author?.handle, post_text: p.record?.text,
         like_count: p.likeCount, repost_count: p.repostCount,
         reply_count: p.replyCount, quote_count: p.quoteCount,
-      }, t.replyTexts);
+      }, t.replies);
       return "reused";
     }
     // stored post gone (deleted, blocked) — fall through to a fresh search
@@ -256,7 +282,7 @@ async function enrichItemBluesky(item, deskCfg, jwt, ctl, prev) {
     author_handle: p.author?.handle, post_text: p.record?.text,
     like_count: p.likeCount, repost_count: p.repostCount,
     reply_count: p.replyCount, quote_count: p.quoteCount,
-  }, t.replyTexts);
+  }, t.replies);
   return "matched";
 }
 
@@ -311,22 +337,26 @@ function pickMastodonCandidate(item, pool, now = Date.now()) {
 async function enrichItemMastodon(item, pool, ctl) {
   const best = pickMastodonCandidate(item, pool);
   if (!best || ctl.backoff) return false;
-  let replyTexts = [];
+  let replies = [];
   const { status, data } = await getJson(`${CFG.mastodon.instance}/api/v1/statuses/${best.id}/context`);
   if (status === 429) ctl.backoff = true;
   else if (status === 200) {
-    replyTexts = (data?.descendants ?? [])
+    replies = (data?.descendants ?? [])
       .filter((d) => d.in_reply_to_id === best.id && d.content)
       .sort((a, b) => (b.favourites_count ?? 0) - (a.favourites_count ?? 0))
       .slice(0, CFG.replyCap)
-      .map((d) => stripHtml(d.content));
+      .map((d) => ({
+        text: stripHtml(d.content),
+        author: d.account?.acct ?? "",
+        likes: d.favourites_count ?? 0,
+      }));
   }
   item.pulse = buildPulse(item, {
     source: "mastodon", post_uri: best.uri, post_url: best.url,
     author_handle: best.acct, post_text: best.text,
     like_count: best.likes, repost_count: best.reblogs,
     reply_count: best.replies, quote_count: 0,
-  }, replyTexts);
+  }, replies);
   return true;
 }
 
