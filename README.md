@@ -73,9 +73,10 @@ netlify deploy --prod
 Or push to GitHub and click **Add new site → Import an existing project** in the
 Netlify UI — `netlify.toml` already declares the build command and publish
 directory. **There are no required environment variables** — the whole pipeline
-is free and keyless. Optionally, set `TAVILY_API_KEY` + `TAVILY_MONTHLY_CREDITS`
-to enable the Tavily discovery layer (see below); leave them unset and it skips
-cleanly.
+is free and keyless. Two optional layers are env-gated and skip cleanly when
+unset: `TAVILY_API_KEY` + `TAVILY_MONTHLY_CREDITS` for Tavily discovery, and
+`BLUESKY_HANDLE` + `BLUESKY_APP_PASSWORD` for Public Pulse (see each section
+below).
 
 ## Legitimacy scoring (the core feature)
 
@@ -105,6 +106,7 @@ The tier map lives in [src/scoring.mjs](src/scoring.mjs) — extend it as you ad
 | Geopolitics | BBC World, Reuters, AP, Al Jazeera, The Guardian, DW, France 24, NPR World, UN News, GDELT DOC API | Reuters/AP retired public RSS — fetched via Google News RSS scoped to `site:reuters.com/world` / `site:apnews.com "world news"`, which preserves the original outlet for scoring. Sports/entertainment are filtered out |
 | India | PIB, The Hindu (National + Other States), Indian Express, Hindustan Times, NDTV, Times of India | PIB's own RSS currently serves Hindi with no dates, so PIB comes via Google News scoped to `site:pib.gov.in`. PIB gets a reserved quota so dailies can't crowd government releases out |
 | Esports | Liquipedia (VALORANT, CS2, Dota 2, PUBG Mobile/BGMI main pages + per-wiki Esports World Cup pages), Dexerto Esports, Dot Esports | All Liquipedia calls share one queue: spaced ~2s, descriptive User-Agent, hard time budget. BGMI events drive the India toggle; EWC pages are India-scoped when an Indian org appears among participants. **Update the contact email in `src/esports.mjs` (`LP_UA`) if you fork this** |
+| World + India (Public Pulse) | Bluesky (search via app-password session; threads via public.api.bsky.app, no auth), optionally Mastodon hashtag timelines (World only) | Reader reaction, not a news source — never merges into an item's source list, never touches the legitimacy tier. Bluesky search ANDs its terms, so queries stay at 4 keywords; matching uses title-side word overlap because plain Jaccard only ever matched verbatim headline-mirror bots (live-verified); zero-engagement matches are discarded |
 
 Dexerto/Dot Esports items are filtered to roster moves, transfers, rumors, and
 EWC coverage. Anything with rumor markers ("reportedly", "in talks", "sources
@@ -141,6 +143,47 @@ sweep with the same corroborate-or-new-item semantics. The key stays
 server-side. Clicks draw from a shared daily pool (20/day, resets each UTC
 day) that also counts against the monthly ledger, so readers can never blow
 the cap. When the layer is off (no env vars), the button never appears.
+
+## Public Pulse (optional, one lightweight credential)
+
+A rule-based **reader reaction** layer on the World and India desks only —
+Tech & AI and Esports are out of scope by design. For each desk's top stories,
+the sweep finds the most engaged matching Bluesky post (rule-based word
+overlap, ~3-day recency window, adult-labeled posts excluded, zero-engagement
+headline-mirror bots filtered out) and reads its native numbers: likes,
+reposts, replies, quotes. Replies feed two **separately labeled** metrics that
+are never collapsed into one figure:
+
+- **Reaction Tone** — plain AFINN-165 lexicon sentiment across the reply
+  sample (% positive / negative / neutral). A mood reading, not agreement.
+- **Framing Alignment** — reply tone sign vs. the headline's own tone sign,
+  always shown with its disclosure: *approximation — reply tone vs. headline
+  tone, not a stance classifier.*
+
+A **Contested** mark appears when tone splits both ways past ~35% or when the
+post is quote-heavy relative to its likes (Bluesky's quote culture skews
+commentary/pushback). No LLM anywhere — lexicon and rules only, same as the
+legitimacy scoring. Stories with no qualifying match get
+`pulse: { found: false }` and render nothing — omitted, not invented. Matched
+post URIs are stored so later sweeps re-fetch fresh numbers directly instead
+of re-searching.
+
+**The one credential, stated plainly:** Bluesky's public read API
+(`public.api.bsky.app`) needs no auth, but keyword *search* needs a session.
+That session comes from an **app password** — generated instantly in your own
+Bluesky account settings (Settings → App Passwords), no developer application,
+no approval queue, no review wait. It is a materially lighter tradeoff than an
+OAuth app registration, and it is this project's one intentional exception to
+the fully keyless posture. Set `BLUESKY_HANDLE` and `BLUESKY_APP_PASSWORD`
+(never the account's main password) in Netlify env settings; if either is
+unset, Pulse silently no-ops and the sweep runs exactly as before.
+
+**Mastodon secondary signal** (World only, off by default): set
+`MASTODON_ENABLED=true` to also match against public hashtag timelines on
+mastodon.social — fully keyless, since Mastodon's public API needs no auth.
+Hashtag timelines only: the fediverse has no unified free-text search without
+an instance account, so none is attempted. Never applied to India, where
+fediverse political discussion is thin.
 
 ## YouTube commentary (no key needed)
 

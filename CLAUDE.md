@@ -49,6 +49,7 @@ Scheduled Netlify function (cron 4×/day)  →  fetch + dedupe + score + tag
 | `src/tavily.mjs` | Optional Tavily discovery: 5 fixed queries/run (basic depth), env-gated, Blobs budget ledger (`tavily-usage`) capped at 90% of the monthly plan, allowance spread over days left in the month. Results enter the normal dedupe+score path. Also holds the reader-facing daily pool (`MANUAL_DAILY_CAP` 20/day, `manualUsed` resets each UTC day). |
 | `netlify/functions/tavily-fetch.mjs` | "Search the wire" endpoint: GET = quota, POST ?section= runs one on-demand query and merges into the stored blob via `mergeManualDiscovery` (pipeline.mjs). Key never reaches the client; button hides when env vars are unset. |
 | `src/commentary.mjs` + `src/commentary-channels.mjs` | YouTube channel-RSS commentary layer. **The channel list lives in commentary-channels.mjs — edit there only.** Commentary sits outside the trust tiers: attached post-scoring (`item.commentary[]` on a matched story, `kind:"commentary"` standalone), never corroborates, never stamped High/Med/Low. |
+| `src/pulse.mjs` + `src/pulseConfig.mjs` + `src/sentimentLexicon.mjs` | Public Pulse: Bluesky (+optional Mastodon, World only, `MASTODON_ENABLED=true`) reader reaction on World/India ONLY — enrichment runs in refresh-news.mjs after scoring, before the blob write; Tech/Esports untouched. Env-gated (`BLUESKY_HANDLE`+`BLUESKY_APP_PASSWORD`, app password not the login). AFINN-165 lexicon sentiment, rule-based matching, `pulse:{found:false}` on no match. **Tuning knobs live in pulseConfig.mjs.** |
 | `netlify/functions/refresh-news.mjs` | The scheduled sweep. Cron in `export const config`. |
 | `scripts/run-pipeline.mjs` | Runs the pipeline once → `public/data/seed.json` (used by `npm run pipeline` and the build). |
 | `scripts/build-tokens.mjs` | `design/tokens.json` → `public/tokens.css`. **`FONT_SUBS` maps commercial faces → free Google Fonts.** Re-run after editing tokens. |
@@ -97,6 +98,16 @@ settled and verified. Frontend re-themes should leave `src/**` and
   can abort all five at the 8s timeout (cold-start artifact of the local runner —
   direct API calls are fast); the retry runs clean. Those aborted calls still
   count as spent — correct, conservative.
+- **Bluesky search ANDs its query terms** — 6-token queries live-tested to near
+  zero hits; 4 keywords (proper nouns first, possessives stripped) find real
+  discussion. **Plain Jaccard title↔post similarity only ever matched verbatim
+  headline-mirror bots** (paraphrased engaged posts inflate the union and
+  collapse the score), so pulse matching uses title-side overlap
+  (`titleOverlap`) at the same 0.35 threshold plus a min-engagement floor.
+  Pulse adds ~2–4s to the sweep (live: 14.9s total). India desk matches are
+  legitimately sparse on quiet days — engaged India discussion exists but
+  often falls outside the 3-day recency window; `found:false` is correct, not
+  a bug.
 
 ## Frontend — the Miranda broadsheet
 
