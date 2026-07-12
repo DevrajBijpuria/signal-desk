@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "news-desk",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "public", "-l", "8899"],
+      "port": 8899
+    }
+  ]
+}

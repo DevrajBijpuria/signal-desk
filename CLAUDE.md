@@ -14,7 +14,9 @@ an 1890s broadsheet newspaper (the "Miranda" theme).
 
 **Two hard constraints that override any convenience:**
 1. **Zero ongoing cost** — no paid APIs, no keys, no database, everything on
-   Netlify's free tier. No required environment variables.
+   Netlify's free tier. No required environment variables. (Tavily discovery is
+   the one env-gated optional: `TAVILY_API_KEY` + `TAVILY_MONTHLY_CREDITS`, never
+   hardcoded, skips cleanly when unset.)
 2. **Legitimacy scoring stays rule-based** — a source-tier map + corroboration
    bump, never an LLM call.
 
@@ -44,6 +46,8 @@ Scheduled Netlify function (cron 4×/day)  →  fetch + dedupe + score + tag
 | `src/feeds.mjs` | RSS/Atom fetch + parse (fast-xml-parser); strips emoji from titles. |
 | `src/scoring.mjs` | The tier map + High/Med/Low + corroboration bump. **Extend the tier map here when adding sources.** |
 | `src/esports.mjs` | Liquipedia scraping (one spaced queue, budgeted), EWC pages, Dexerto/DotEsports rumor layer. `LP_UA` holds the contact email. |
+| `src/tavily.mjs` | Optional Tavily discovery: 5 fixed queries/run (basic depth), env-gated, Blobs budget ledger (`tavily-usage`) capped at 90% of the monthly plan, allowance spread over days left in the month. Results enter the normal dedupe+score path. |
+| `src/commentary.mjs` + `src/commentary-channels.mjs` | YouTube channel-RSS commentary layer. **The channel list lives in commentary-channels.mjs — edit there only.** Commentary sits outside the trust tiers: attached post-scoring (`item.commentary[]` on a matched story, `kind:"commentary"` standalone), never corroborates, never stamped High/Med/Low. |
 | `netlify/functions/refresh-news.mjs` | The scheduled sweep. Cron in `export const config`. |
 | `scripts/run-pipeline.mjs` | Runs the pipeline once → `public/data/seed.json` (used by `npm run pipeline` and the build). |
 | `scripts/build-tokens.mjs` | `design/tokens.json` → `public/tokens.css`. **`FONT_SUBS` maps commercial faces → free Google Fonts.** Re-run after editing tokens. |
@@ -77,6 +81,17 @@ settled and verified. Frontend re-themes should leave `src/**` and
 - **Rumors:** anything from Dexerto/DotEsports with rumor markers ("reportedly",
   "in talks", "sources say", …) is tagged **Rumor** and force-scored **Low** until a
   tier-1 source corroborates.
+- **YouTube channel RSS** (`youtube.com/feeds/videos.xml?channel_id={ID}`) parses
+  fine through the existing Atom path — no key, no quirks. But **resolving a
+  @handle to its ID needs `"externalId"`** from the handle page's source; the first
+  `"channelId"` hit can belong to a *related* channel (this bit both Perun and
+  CaspianReport during setup — always verify the ID against its feed `<title>`).
+  **AFK Gaming's channel is dormant** (main: nothing since 2022; "Global": Mar 2025),
+  so Esports-India commentary is legitimately empty until they upload again.
+- **Tavily runs in parallel with the section builders** (a shared promise each
+  builder awaits), never serially before them — serial would stack ~8s on the 24s
+  esports budget and threaten the 30s cap. Attempted requests count as spent,
+  success or failure.
 
 ## Frontend — the Miranda broadsheet
 

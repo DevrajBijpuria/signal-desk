@@ -72,8 +72,10 @@ netlify deploy --prod
 
 Or push to GitHub and click **Add new site → Import an existing project** in the
 Netlify UI — `netlify.toml` already declares the build command and publish
-directory. **There are no environment variables to set.** The whole pipeline is
-free and keyless.
+directory. **There are no required environment variables** — the whole pipeline
+is free and keyless. Optionally, set `TAVILY_API_KEY` + `TAVILY_MONTHLY_CREDITS`
+to enable the Tavily discovery layer (see below); leave them unset and it skips
+cleanly.
 
 ## Legitimacy scoring (the core feature)
 
@@ -113,6 +115,35 @@ unconfirmed lineup change never reads as settled fact.
 GDELT is wired with its own timeout; some networks reset connections to it, in
 which case the sweep simply proceeds without it (the source counter in the header
 shows exactly this).
+
+## Tavily discovery (optional, env-gated)
+
+One broad topical search per section per run — five fixed queries, basic depth —
+in [src/tavily.mjs](src/tavily.mjs). Results that match an existing story (same
+title-similarity test as dedupe) merge in as a **corroborating source**; anything
+else becomes a new item scored through the same rule-based tier map. No key, no
+layer: if `TAVILY_API_KEY` or `TAVILY_MONTHLY_CREDITS` is unset, or the Blobs
+budget ledger is unreachable, the run proceeds on RSS/API/YouTube alone.
+
+Budget lock: spend is capped at **90% of `TAVILY_MONTHLY_CREDITS`**. Usage lives
+in Blobs (`tavily-usage`: `{ month, creditsUsed }`, reset on month rollover); each
+run may spend `(cappedCeiling − creditsUsed) / daysLeftInMonth`, so skipped runs
+roll their budget forward. Queries run in priority order (tech → geo → India →
+esports global → esports India) and stop when the allowance is out; a partial run
+never blocks the rest of the sweep. Every attempted request counts as spent.
+
+## YouTube commentary (no key needed)
+
+Channel RSS (`youtube.com/feeds/videos.xml?channel_id=…`) fetched exactly like
+the other feeds. The channel list lives in
+[src/commentary-channels.mjs](src/commentary-channels.mjs), grouped by section —
+edit it there; the fetch logic never changes. Everything from this source is
+**commentary**, a category apart from the trust tiers: it never carries a
+legitimacy rating, never joins a story's source list, and never counts toward
+corroboration. A video that topically matches a story rides along under that
+story's byline; the rest run as their own stamped COMMENTARY entries. Uploads
+older than 7 days don't print (max 3 per channel per sweep). The India slot is
+an intentionally empty placeholder.
 
 ## Frontend — the Miranda broadsheet
 
