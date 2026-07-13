@@ -360,6 +360,24 @@ async function enrichItemMastodon(item, pool, ctl) {
   return true;
 }
 
+/**
+ * Reader-triggered pulse for ONE story (the per-story Opinion button):
+ * fresh session, same search → match → thread → voices path as the sweep.
+ * Returns the pulse object ({ found: false } when nothing qualifies);
+ * throws only when the layer itself can't run (no env vars, auth failure).
+ */
+export async function fetchPulseForItem(item, desk) {
+  const deskCfg = CFG.desks[desk];
+  if (!deskCfg) throw new Error(`not a pulse desk: ${desk}`);
+  const handle = process.env.BLUESKY_HANDLE;
+  const appPassword = process.env.BLUESKY_APP_PASSWORD;
+  if (!handle || !appPassword) throw new Error("Bluesky credentials not configured");
+  const jwt = await createSession(handle, appPassword);
+  const ctl = { backoff: false };
+  await enrichItemBluesky(item, deskCfg, jwt, ctl, item.pulse?.found ? item.pulse : undefined);
+  return item.pulse ?? (item.pulse = { found: false });
+}
+
 // ---------- orchestration ----------
 
 /**

@@ -11,6 +11,8 @@ const state = {
   view: "news", // "news" | "opinion" — the in-section flip view
   // reader-triggered Tavily search: daily pool, counted server-side
   wire: { enabled: false, remaining: 0, busy: false },
+  // per-story reader-reaction fetch (World/India Opinion buttons)
+  pulseFetch: { enabled: false },
 };
 
 const SECTION_META = {
@@ -352,11 +354,15 @@ function voicesSideHtml(label, cls, messages) {
   return `<p class="voices-head voices-head--${cls}">${label}</p>${rows}`;
 }
 
-function storyOpinionsHtml(item) {
+function opinionCount(item) {
+  const v = item.pulse?.voices;
+  return (item.opinions?.length ?? 0) + (v?.for?.length ?? 0) + (v?.against?.length ?? 0);
+}
+
+function opinionPanelInner(item) {
   const ops = item.opinions ?? [];
   const v = item.pulse?.voices;
   const voiceCount = (v?.for?.length ?? 0) + (v?.against?.length ?? 0);
-  if (!ops.length && !voiceCount) return "";
   const colRows = ops.slice(0, 3).map((o) =>
     `<p class="story-opinion-row"><a href="${esc(safeUrl(o.url))}" target="_blank" rel="noopener">${esc(o.source)} — “${esc(deEmoji(o.title))}”</a></p>`).join("");
   const voices = voiceCount
@@ -366,21 +372,75 @@ function storyOpinionsHtml(item) {
         <p class="voices-note">${esc(v.note ?? "grouped by reply tone — an approximation, not a stance classifier")}</p>
       </div>`
     : "";
-  return `<div class="story-opinions">
-      <button type="button" class="opinion-btn" aria-expanded="false">Opinion on this story (${ops.length + voiceCount})</button>
-      <div class="story-opinion-list" hidden>${colRows}${voices}</div>
+  if (!colRows && !voices) {
+    return `<p class="voices-note">No reader discussion found for this story on the wire this time.</p>`;
+  }
+  return colRows + voices;
+}
+
+function storyOpinionsHtml(item) {
+  // World + India stories only — never commentary or the columns themselves
+  if (state.tab !== "geopolitics" && state.tab !== "india") return "";
+  if (item.kind === "commentary" || item.contentType === "opinion") return "";
+  const n = opinionCount(item);
+  // without server-side credentials the button only prints where the sweep
+  // already found something
+  if (!n && !state.pulseFetch.enabled) return "";
+  const loaded = n > 0;
+  return `<div class="story-opinions" data-id="${esc(item.id)}" data-loaded="${loaded ? "1" : "0"}">
+      <button type="button" class="opinion-btn" aria-expanded="false">Opinion on this story${n ? ` (${n})` : ""}</button>
+      <div class="story-opinion-list" hidden>${loaded ? opinionPanelInner(item) : ""}</div>
     </div>`;
 }
 
-// one delegated listener survives every board re-render
-board.addEventListener("click", (e) => {
+/* One delegated listener survives every board re-render. First click on a
+   story without stored voices asks the wire live (same server-side-credential
+   pattern as "Search the wire"); after that it's a plain fold. */
+board.addEventListener("click", async (e) => {
   const btn = e.target.closest(".opinion-btn");
-  if (!btn) return;
-  const list = btn.parentElement.querySelector(".story-opinion-list");
-  const open = list.hidden;
-  list.hidden = !open;
-  btn.setAttribute("aria-expanded", String(open));
+  if (!btn || btn.disabled) return;
+  const wrap = btn.closest(".story-opinions");
+  const list = wrap.querySelector(".story-opinion-list");
+  if (wrap.dataset.loaded === "1") {
+    const open = list.hidden;
+    list.hidden = !open;
+    btn.setAttribute("aria-expanded", String(open));
+    return;
+  }
+  const section = state.tab;
+  const item = (state.data?.sections?.[section] ?? []).find((i) => i.id === wrap.dataset.id);
+  if (!item) return;
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = "Asking the readers…";
+  try {
+    const res = await fetch(`/api/pulse-fetch?section=${section}&id=${encodeURIComponent(item.id)}`, { method: "POST" });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok || !out.pulse) throw new Error(out.error ?? "no answer");
+    item.pulse = out.pulse;
+    if (out.opinions?.length) item.opinions = out.opinions;
+    list.innerHTML = opinionPanelInner(item);
+    const n = opinionCount(item);
+    btn.textContent = `Opinion on this story${n ? ` (${n})` : ""}`;
+    wrap.dataset.loaded = "1";
+    list.hidden = false;
+    btn.setAttribute("aria-expanded", "true");
+    btn.disabled = false;
+  } catch {
+    btn.textContent = "The wire did not answer";
+    setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 2600);
+  }
 });
+
+async function initPulseFetch() {
+  try {
+    const res = await fetch("/api/pulse-fetch");
+    if (!res.ok) return;
+    const info = await res.json();
+    state.pulseFetch.enabled = !!info.enabled;
+    if (state.pulseFetch.enabled && state.data) renderBoard(); // buttons appear once we know
+  } catch { /* endpoint unreachable — buttons stay content-only */ }
+}
 
 /* Pull quote only when the story actually contains one — a real quotation
    in the wire copy, not manufactured emphasis. */
@@ -812,3 +872,4 @@ wireBtn.addEventListener("click", wireSearch);
 injectStampDefs();
 load();
 initWireSearch();
+initPulseFetch();
