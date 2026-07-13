@@ -9,13 +9,17 @@ export default async () => {
   const store = getStore("news-desk");
 
   // Previous sweep's pulse matches, keyed by item id: an already-matched
-  // story re-fetches its stored post directly instead of re-searching.
+  // story re-fetches its stored post/video directly instead of re-searching
+  // (which matters most for YouTube's scarce search bucket). Both the array
+  // shape and the legacy single-object shape ride through; pulse.mjs
+  // normalizes.
   const prevPulse = new Map();
   try {
     const prev = await store.get("latest", { type: "json" });
     for (const section of ["geopolitics", "india"]) {
       for (const item of prev?.sections?.[section] ?? []) {
-        if (item.pulse?.found && item.pulse.post_uri) prevPulse.set(item.id, item.pulse);
+        const entries = Array.isArray(item.pulse) ? item.pulse : item.pulse?.found ? [item.pulse] : [];
+        if (entries.length) prevPulse.set(item.id, entries);
       }
     }
   } catch { /* no previous sweep — every match starts from search */ }

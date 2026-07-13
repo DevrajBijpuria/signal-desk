@@ -58,4 +58,17 @@ export const PULSE_CONFIG = {
     hashtags: ["worldnews", "geopolitics"],
     perTagLimit: 40,
   },
+
+  // Second provider: YouTube comments (YOUTUBE_API_KEY, self-serve, no
+  // approval queue). search.list draws from its own scarce daily bucket
+  // (~100 calls/day since the June 2026 change) — hence a deliberately
+  // smaller top-N than Bluesky's: 2 desks × 4 stories × 4 sweeps = 32
+  // searches/day worst case, and stored-ID reuse spends zero of them.
+  // Stats/comment reads are cheap main-pool units.
+  youtube: {
+    perDeskCap: 4,
+    windowDays: 3,        // publishedAfter/Before window around the story date
+    searchMaxResults: 10,
+    disabledCommentFallbacks: 3, // candidates to try when comments are turned off
+  },
 };

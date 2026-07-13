@@ -109,11 +109,22 @@ function importance(item) {
   // Public Pulse: a small, capped nudge for genuinely discussed stories —
   // legitimacy stays dominant (high trust alone is worth 5), so a Low item
   // can never outrank a Verified one just for being talked about.
-  if (item.pulse?.found) {
-    const engaged = (item.pulse.like_count ?? 0) + (item.pulse.reply_count ?? 0);
-    if (engaged >= 50 || item.pulse.controversial) s += 1;
-  }
+  const discussed = pulseEntries(item).some((p) => {
+    const engaged = p.source === "youtube"
+      ? (p.like_count ?? 0) + (p.comment_count ?? 0)
+      : (p.like_count ?? 0) + (p.reply_count ?? 0);
+    return engaged >= 50 || p.controversial;
+  });
+  if (discussed) s += 1;
   return s;
+}
+
+/* pulse is an array of provider entries; older stored sweeps carried a single
+   object — normalize so both render. */
+function pulseEntries(item) {
+  const p = item.pulse;
+  if (Array.isArray(p)) return p.filter((e) => e && e.found !== false);
+  return p?.found ? [p] : [];
 }
 
 /* ---------- data loading ---------- */
@@ -316,25 +327,35 @@ function commentaryHtml(item) {
    philosophy as the market wire. Tone and framing stay two separately
    labeled lines, never one number; framing always carries its disclosure. */
 
-function pulseHtml(item) {
-  const p = item.pulse;
-  if (!p?.found) return "";
-  const likes = p.like_count ?? 0;
-  const replies = p.reply_count ?? 0;
+function pulseNoteHtml(p) {
   const tone = p.reaction_tone;
   const fr = p.framing_alignment;
-  const srcName = p.source === "mastodon" ? "Mastodon" : "Bluesky";
-  const note = fr?.note ?? "approximation — reply tone vs. headline tone, not a stance classifier";
-  return `<aside class="pulse" aria-label="Public Pulse — reader reaction, not a legitimacy rating">
-      <div class="pulse-head">Public Pulse
-        ${p.controversial ? `<span class="pulse-contested" title="Split or quote-heavy reaction — readers are divided">Contested</span>` : ""}
+  const note = fr?.note ?? "approximation — not a stance classifier";
+  const isYt = p.source === "youtube";
+  const srcName = isYt ? "YouTube" : p.source === "mastodon" ? "Mastodon" : "Bluesky";
+  const sampleWord = isYt ? "comments" : "replies";
+  const engLine = isYt
+    ? `${p.view_count ?? 0} views · ${p.like_count ?? 0} likes · ${p.comment_count ?? 0} comments on the matched video`
+    : `${p.like_count ?? 0} likes · ${p.reply_count ?? 0} replies on the matched post`;
+  const linkText = isYt
+    ? `Discussed on YouTube — “${esc(deEmoji(p.video_title ?? ""))}” →`
+    : `Discussed on ${srcName} →`;
+  return `<aside class="pulse" aria-label="Public Pulse — reader reaction via ${srcName}, not a legitimacy rating">
+      <div class="pulse-head">Public Pulse · ${srcName}
+        ${p.controversial ? `<span class="pulse-contested" title="Split reaction — readers are divided">Contested</span>` : ""}
       </div>
-      <p class="pulse-line">${likes} likes · ${replies} replies on the matched post</p>
-      ${tone?.sample_size ? `<p class="pulse-line">Reaction Tone: ${tone.positive_pct}% positive · ${tone.negative_pct}% negative · ${tone.neutral_pct}% neutral <span class="pulse-n">(${tone.sample_size} replies)</span></p>` : ""}
+      <p class="pulse-line">${engLine}</p>
+      ${tone?.sample_size ? `<p class="pulse-line">Reaction Tone: ${tone.positive_pct}% positive · ${tone.negative_pct}% negative · ${tone.neutral_pct}% neutral <span class="pulse-n">(${tone.sample_size} ${sampleWord})</span></p>` : ""}
       ${fr?.sample_size ? `<p class="pulse-line">Framing Alignment: ${fr.aligned_pct}% aligned · ${fr.pushback_pct}% pushback (approx.)
         <span class="pulse-info" tabindex="0" role="note" aria-label="${esc(note)}" title="${esc(note)}">ⓘ</span></p>` : ""}
-      <a class="pulse-link" href="${esc(safeUrl(p.post_url))}" target="_blank" rel="noopener">Discussed on ${srcName} →</a>
+      <a class="pulse-link" href="${esc(safeUrl(isYt ? p.video_url : p.post_url))}" target="_blank" rel="noopener">${linkText}</a>
     </aside>`;
+}
+
+// One marginalia note per provider that matched — two independent reactions
+// are a richer signal, stacked like letters in the margin (capped at 2).
+function pulseHtml(item) {
+  return pulseEntries(item).slice(0, 2).map(pulseNoteHtml).join("");
 }
 
 /* ---------- per-story opinion (World + India) ----------
@@ -354,22 +375,30 @@ function voicesSideHtml(label, cls, messages) {
   return `<p class="voices-head voices-head--${cls}">${label}</p>${rows}`;
 }
 
+/* Reader voices merged across every provider entry (Bluesky replies +
+   YouTube comments read the same way), capped per side for the fold. */
+function mergedVoices(item) {
+  const entries = pulseEntries(item);
+  const side = (k) => entries.flatMap((e) => e.voices?.[k] ?? []).slice(0, 4);
+  return { for: side("for"), against: side("against") };
+}
+
 function opinionCount(item) {
-  const v = item.pulse?.voices;
-  return (item.opinions?.length ?? 0) + (v?.for?.length ?? 0) + (v?.against?.length ?? 0);
+  const v = mergedVoices(item);
+  return (item.opinions?.length ?? 0) + v.for.length + v.against.length;
 }
 
 function opinionPanelInner(item) {
   const ops = item.opinions ?? [];
-  const v = item.pulse?.voices;
-  const voiceCount = (v?.for?.length ?? 0) + (v?.against?.length ?? 0);
+  const v = mergedVoices(item);
+  const voiceCount = v.for.length + v.against.length;
   const colRows = ops.slice(0, 3).map((o) =>
     `<p class="story-opinion-row"><a href="${esc(safeUrl(o.url))}" target="_blank" rel="noopener">${esc(o.source)} — “${esc(deEmoji(o.title))}”</a></p>`).join("");
   const voices = voiceCount
     ? `<div class="story-voices">
         ${voicesSideHtml("Readers for", "for", v.for)}
         ${voicesSideHtml("Readers against", "against", v.against)}
-        <p class="voices-note">${esc(v.note ?? "grouped by reply tone — an approximation, not a stance classifier")}</p>
+        <p class="voices-note">real replies and comments from the matched threads, grouped by tone — an approximation, not a stance classifier</p>
       </div>`
     : "";
   if (!colRows && !voices) {

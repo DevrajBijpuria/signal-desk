@@ -183,15 +183,34 @@ server-side. Clicks draw from a shared daily pool (20/day, resets each UTC
 day) that also counts against the monthly ledger, so readers can never blow
 the cap. When the layer is off (no env vars), the button never appears.
 
-## Public Pulse (optional, one lightweight credential)
+## Public Pulse (optional, lightweight credentials)
 
 A rule-based **reader reaction** layer on the World and India desks only —
-Tech & AI and Esports are out of scope by design. For each desk's top stories,
-the sweep finds the most engaged matching Bluesky post (rule-based word
-overlap, ~3-day recency window, adult-labeled posts excluded, zero-engagement
-headline-mirror bots filtered out) and reads its native numbers: likes,
-reposts, replies, quotes. Replies feed two **separately labeled** metrics that
-are never collapsed into one figure:
+Tech & AI and Esports are out of scope by design. `pulse` is an **array of
+provider entries** (`source: "bluesky" | "youtube" | "mastodon"`), one per
+provider that found a qualifying match — a story matched by two providers
+shows two stacked marginalia notes (a genuinely richer signal), and a story
+matched by none carries `pulse: []`.
+
+**Bluesky (primary):** for each desk's top stories, the sweep finds the most
+engaged matching post (rule-based word overlap, ~3-day recency window,
+adult-labeled posts excluded, zero-engagement headline-mirror bots filtered
+out) and reads its native numbers: likes, reposts, replies, quotes.
+
+**YouTube comments (second provider, both desks):** same query building, same
+similarity function against video title + description, same 0.35 threshold;
+`YOUTUBE_API_KEY` is a self-serve key from Google Cloud Console — no approval
+queue, no card. The one real budget: since June 2026, `search.list` draws
+from its own ~100-calls/day bucket, so YouTube gets a deliberately smaller
+top-N (4 stories per desk vs. Bluesky's 8 → 32 searches/day worst case), and
+matched video IDs are stored so later sweeps re-fetch numbers via the cheap
+main-pool endpoints instead of re-searching. Videos with comments disabled (a
+meaningful share of news videos) are a normal no-match, not an error — the
+next qualifying candidate is tried. Key absent → the provider logs once and
+no-ops; Bluesky and Mastodon are unaffected.
+
+Replies/comments feed two **separately labeled** metrics that are never
+collapsed into one figure:
 
 - **Reaction Tone** — plain AFINN-165 lexicon sentiment across the reply
   sample (% positive / negative / neutral). A mood reading, not agreement.
