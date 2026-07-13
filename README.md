@@ -117,14 +117,20 @@ Because opinion pieces sit deep in section feeds (below the news of the
 hour), each World/India feed also keeps up to 3 opinion-flagged entries from
 beyond its normal item cap — otherwise the head-slice almost never carries one.
 
-Two ways onto the page, both World/India only. **Per story:** the "Opinion on
-this story (n)" button unfolds two kinds of voices inline — columns that
+Two ways onto the page, both World/India only. **Per story:** every story
+carries an "Opinion on this story" button. Stories the sweep already enriched
+unfold instantly; on any other story the first click **asks the wire live**
+(`netlify/functions/pulse-fetch.mjs` — the Bluesky credentials stay
+server-side, one search + one thread read per click, stored back into the
+blob for later readers). The panel holds two kinds of voices — columns that
 topically match the story (same title-overlap rule as dedupe, pinned as
-pointers), and **real reader replies from the story's matched Pulse thread,
-separated "Readers for" / "Readers against" by reply tone** (top-liked first,
-capped per side, quoted with author and like count, and always carrying the
-disclosure that tone-grouping is an approximation, not a stance classifier).
-Stories with neither show no button. **Per desk:** the section header's
+pointers), and **real reader replies from the matched thread, separated
+"Readers for" / "Readers against" by reply tone** (top-liked first, capped
+per side, quoted with author and like count, always carrying the disclosure
+that tone-grouping is an approximation, not a stance classifier). No
+discussion found says so plainly. Without the Bluesky env vars the button
+only prints where a sweep already stored something. **Per desk:** the section
+header's
 OPINION toggle turns the sheet (the same page-flip as a section switch) to a
 "[SECTION] — OPINION" view listing every flagged item as a brief entry with a
 neutral grayscale OPINION stamp, one-line excerpt, and source byline. Opinion
