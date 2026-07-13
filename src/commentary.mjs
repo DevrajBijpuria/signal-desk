@@ -50,7 +50,7 @@ export function attachCommentary(items, videos, extra = {}) {
   for (const v of videos) {
     const vTokens = titleTokens(v.title);
     const match = items.find(
-      (it) => it.kind !== "commentary" && it.contentType !== "opinion" && similarTitles(titleTokens(it.title), vTokens)
+      (it) => it.kind !== "commentary" && similarTitles(titleTokens(it.title), vTokens)
     );
     if (match) {
       (match.commentary ??= []).push({

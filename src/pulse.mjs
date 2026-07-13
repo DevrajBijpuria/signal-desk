@@ -9,7 +9,7 @@
 // lexicon via sentimentLexicon.mjs, shared by every provider. Every failure
 // degrades to a missing entry; nothing here can fail the sweep.
 import { PULSE_CONFIG as CFG } from "./pulseConfig.mjs";
-import { toneScore } from "./sentimentLexicon.mjs";
+import { toneScore, stripForTone } from "./sentimentLexicon.mjs";
 import { titleTokens } from "./dedupe.mjs";
 import { stripHtml } from "./util.mjs";
 
@@ -158,22 +158,25 @@ export function aggregateFraming(headline, texts) {
   };
 }
 
-/** Real reader voices, separated For / Against by reply tone sign (positive →
-    for, negative → against) — the same lexicon as everything else, no model.
-    An approximation by nature; the disclosure ships in the object and the UI.
-    Neutral replies belong to neither side. Top-liked first, capped per side. */
-export function buildVoices(replies) {
+/** Individual reaction samples, retained during the same tone-bucketing pass
+    that feeds the aggregates — positive and negative only (the two-column
+    card back has no neutral column), highest engagement first, capped per
+    bucket. Each sample keeps the text the lexicon actually read, the author,
+    a permalink to that specific comment/post, and the raw engagement count
+    used for sorting. */
+export function buildSamples(replies) {
   const pick = (sign) =>
     replies
       .filter((r) => Math.sign(toneScore(r.text) ?? 0) === sign)
       .sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0))
-      .slice(0, CFG.voicesPerSide)
-      .map((r) => ({ text: String(r.text).slice(0, 280), author: r.author ?? "", likes: r.likes ?? 0 }));
-  return {
-    for: pick(1),
-    against: pick(-1),
-    note: "real replies from the matched thread, grouped by reply tone — an approximation, not a stance classifier",
-  };
+      .slice(0, CFG.samplesPerBucket)
+      .map((r) => ({
+        text: stripForTone(r.text).slice(0, 280),
+        author: r.author ?? "",
+        permalink: r.permalink ?? "",
+        engagement: r.likes ?? 0,
+      }));
+  return { positive: pick(1), negative: pick(-1) };
 }
 
 /** Contested content: split tone, or quote-heavy engagement (Bluesky's quote
@@ -211,11 +214,12 @@ function threadReplies(thread) {
       text: r.post.record.text,
       author: r.post.author?.handle ?? "",
       likes: r.post.likeCount ?? 0,
+      permalink: bskyPostUrl(r.post.uri, r.post.author?.handle ?? ""),
     }));
 }
 
-// `replies` are { text, author, likes } objects; the aggregates read the
-// texts, the voices keep the real messages.
+// `replies` are { text, author, likes, permalink } objects; the aggregates
+// read the texts, the samples keep the real messages.
 function buildPulse(item, { source, post_uri, post_url, author_handle, post_text, like_count, repost_count, reply_count, quote_count }, replies) {
   const texts = replies.map((r) => r.text);
   const tone = aggregateTone(texts);
@@ -232,7 +236,7 @@ function buildPulse(item, { source, post_uri, post_url, author_handle, post_text
     quote_count: quote_count ?? 0,
     reaction_tone: tone,
     framing_alignment: aggregateFraming(item.title, texts),
-    voices: buildVoices(replies),
+    samples: buildSamples(replies),
     controversial: isControversial(tone, like_count, quote_count),
     fetched_at: new Date().toISOString(),
   };
@@ -358,6 +362,7 @@ async function enrichItemMastodon(item, pool, ctl) {
         text: stripHtml(d.content),
         author: d.account?.acct ?? "",
         likes: d.favourites_count ?? 0,
+        permalink: d.url ?? "",
       }));
   }
   item.pulse.push(buildPulse(item, {
@@ -423,7 +428,7 @@ async function ytVideoEntry(item, key, video, ctl) {
     comment_count: Number(stats.commentCount ?? 0),
     reaction_tone: tone,
     framing_alignment: framing,
-    voices: buildVoices(replies),
+    samples: buildSamples(replies),
     // the shared base rule only (split tone) — YouTube has no quote analog
     controversial: isControversial(tone, likeCount, 0),
     fetched_at: new Date().toISOString(),
@@ -487,29 +492,6 @@ async function enrichItemYouTube(item, key, ctl, prev) {
   return null;
 }
 
-/**
- * Reader-triggered pulse for ONE story (the per-story Opinion button):
- * fresh session, same search → match → thread → voices path as the sweep.
- * Bluesky only, deliberately — reader clicks are unbounded and must never
- * drain YouTube's scarce daily search bucket; YouTube entries arrive with the
- * scheduled sweeps. Returns the story's pulse entry array ([] when nothing
- * qualifies); throws only when the layer itself can't run (no env vars,
- * auth failure).
- */
-export async function fetchPulseForItem(item, desk) {
-  const deskCfg = CFG.desks[desk];
-  if (!deskCfg) throw new Error(`not a pulse desk: ${desk}`);
-  const handle = process.env.BLUESKY_HANDLE;
-  const appPassword = process.env.BLUESKY_APP_PASSWORD;
-  if (!handle || !appPassword) throw new Error("Bluesky credentials not configured");
-  const jwt = await createSession(handle, appPassword);
-  const ctl = { backoff: false };
-  const prev = prevOf(item.pulse, "bluesky");
-  item.pulse = prevEntries(item.pulse).filter((e) => e.source !== "bluesky");
-  await enrichItemBluesky(item, deskCfg, jwt, ctl, prev);
-  return item.pulse;
-}
-
 // ---------- orchestration ----------
 
 /**
@@ -522,9 +504,9 @@ export async function enrichWithPulse(items, desk, stats = [], prevPulse = new M
   const deskCfg = CFG.desks[desk];
   if (!deskCfg) return items;
   const ctl = { backoff: false, ytQuota: false };
-  // Commentary and opinion sit outside the news flow — neither gets a pulse.
+  // Commentary sits outside the news flow — it never gets a pulse.
   const targets = items
-    .filter((i) => i.kind !== "commentary" && i.contentType !== "opinion")
+    .filter((i) => i.kind !== "commentary")
     .slice(0, CFG.perDeskCap);
   for (const t of targets) t.pulse = []; // providers push entries into this
 

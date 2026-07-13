@@ -229,20 +229,6 @@ button {
 .wire-search[disabled] { opacity: 0.55; cursor: default; text-decoration: none; }
 .wire-search[hidden] { display: none; }
 
-/* the OPINION flip toggle — same edition-line voice as the scope switch */
-.opinion-toggle {
-  font-size: 15px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  transition: color 0.15s ease;
-}
-.opinion-toggle:hover { color: var(--color-pure-black); text-decoration-thickness: 1.5px; }
-.opinion-toggle[aria-pressed="true"] {
-  color: var(--color-pure-black);
-  text-decoration-thickness: 1.5px;
-}
 
 /* ============ the board ============ */
 .board { position: relative; padding-top: var(--sp-22); min-height: 320px; }
@@ -409,65 +395,113 @@ button {
 .stampc--low { transform: rotate(-12deg); color: var(--color-ink-black); }
 /* commentary is a category, not a trust tier — plain ink, a light press */
 .stampc--commentary { transform: rotate(4deg); opacity: 0.62; color: var(--color-ink-black); }
-/* opinion likewise: neutral grayscale, deliberately outside the tier stamps */
-.stampc--opinion { transform: rotate(-5deg); opacity: 0.62; color: var(--color-ink-black); }
 
-/* opinion flip-view entries: brief conventions with a one-line excerpt */
-.story--opinion .opinion-excerpt {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* ---- the per-story OPINION card flip (World + India) ----
+   Same tilted-axis page-turn as the section switch (rotate3d 0.16,1,0 —
+   top-right corner leads), same 780ms cubic-bezier, scoped to one card.
+   The back face is pre-rotated on the same axis so a 180° leaf turn lands
+   it flat; it scrolls within the card's bounds when the sample list runs
+   longer than the story. */
+.card-flippable { perspective: 1400px; }
+.card-leaf {
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 780ms cubic-bezier(0.42, 0, 0.32, 1);
+  will-change: transform;
+  height: 100%;
 }
-
-/* per-story opinion: a small unfolding note under the byline (World + India) */
-.story-opinions { margin-top: var(--sp-4); }
-.opinion-btn {
+.card-flippable.is-flipped .card-leaf { transform: rotate3d(0.16, 1, 0, -180deg); }
+.card-face { backface-visibility: hidden; }
+/* the turned-away face must never catch clicks through the back's gaps */
+.card-flippable.is-flipped .card-face--front { pointer-events: none; }
+.card-face--back {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  transform: rotate3d(0.16, 1, 0, -180deg);
+  background: var(--color-parchment);
+  padding-right: var(--sp-4);
+}
+.lead .card-face--back { background: var(--surface-bone-cream); } /* the lead sits on its card stock */
+.flip-btn {
   font-size: 13px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   text-decoration: underline;
   text-underline-offset: 3px;
   transition: color 0.15s ease;
 }
-.opinion-btn:hover { color: var(--color-pure-black); text-decoration-thickness: 1.5px; }
-.opinion-btn[aria-expanded="true"] { color: var(--color-pure-black); }
-.story-opinion-list {
-  border-left: 2px solid var(--color-charcoal);
-  padding-left: var(--sp-10);
-  margin-top: var(--sp-4);
+.flip-btn:hover { color: var(--color-pure-black); text-decoration-thickness: 1.5px; }
+.flip-btn--open { display: block; margin-top: var(--sp-7); }
+.card-back-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-10);
+  border-bottom: 2px solid var(--color-ink-black);
+  padding-bottom: var(--sp-4);
 }
-.story-opinion-row {
+.card-back-title {
   font-size: 13px;
-  line-height: 1.5;
-  font-style: italic;
-  overflow-wrap: anywhere;
-  margin: 0 0 var(--sp-4);
-}
-.story-opinion-row a { text-decoration: underline; text-underline-offset: 3px; transition: color 0.15s ease; }
-.story-opinion-row a:hover { color: var(--color-pure-black); text-decoration-thickness: 1.5px; }
-
-/* real reader replies, separated for/against by reply tone */
-.story-voices { margin-top: var(--sp-7); }
-.voices-head {
-  font-size: 12px;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  margin: var(--sp-7) 0 var(--sp-4);
 }
-.voices-head--for::before { content: "▲ "; }
-.voices-head--against::before { content: "▼ "; }
-.voice {
-  font-size: 13px;
-  line-height: 1.5;
-  margin: 0 0 var(--sp-4);
-  overflow-wrap: anywhere;
-}
-.voice-author { font-style: italic; opacity: 0.8; }
-.voices-note {
+.flip-disclosure {
   font-size: 12px;
   font-style: italic;
   opacity: 0.75;
-  margin: var(--sp-4) 0 0;
+  margin: var(--sp-4) 0 var(--sp-7);
+}
+.opinion-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-12);
+}
+.opinion-col { min-width: 0; }
+.opinion-col + .opinion-col { border-left: 1px solid var(--color-charcoal); padding-left: var(--sp-12); }
+.opinion-col-head {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin: 0 0 var(--sp-7);
+}
+.opinion-col-head--for::before { content: "▲ "; }
+.opinion-col-head--against::before { content: "▼ "; }
+.op-sample {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 var(--sp-7);
+  overflow-wrap: anywhere;
+}
+.op-sample a { text-decoration: underline; text-underline-offset: 3px; transition: color 0.15s ease; }
+.op-sample a:hover { color: var(--color-pure-black); text-decoration-thickness: 1.5px; }
+.op-src {
+  display: inline-block;
+  border: 1px solid var(--color-ink-black);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  padding: 0 var(--sp-4);
+  vertical-align: 1px;
+}
+.op-author { font-style: italic; opacity: 0.8; }
+.op-empty { font-size: 13px; font-style: italic; opacity: 0.75; }
+.op-links { margin-top: var(--sp-4); }
+.op-more {
+  display: inline-block;
+  margin-right: var(--sp-10);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (max-width: 640px) {
+  .opinion-cols { grid-template-columns: 1fr; }
+  .opinion-col + .opinion-col { border-left: 0; padding-left: 0; border-top: 1px solid var(--color-charcoal); padding-top: var(--sp-10); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-leaf { transition: none; } /* instant cut, same as the section flip */
 }
 .stamp-arc-text {
   font-family: var(--font-editorial-new);

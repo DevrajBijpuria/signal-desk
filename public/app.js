@@ -8,11 +8,8 @@ const state = {
   fromSeed: false,
   tab: "tech",
   esportsScope: "global",
-  view: "news", // "news" | "opinion" — the in-section flip view
   // reader-triggered Tavily search: daily pool, counted server-side
   wire: { enabled: false, remaining: 0, busy: false },
-  // per-story reader-reaction fetch (World/India Opinion buttons)
-  pulseFetch: { enabled: false },
 };
 
 const SECTION_META = {
@@ -201,9 +198,6 @@ const STAMP_TEXT = {
   low: { arc: "UNVERIFIED", word: "UNVERIFIED", filter: "stamp-rough-3" },
   // Not a trust tier — YouTube commentary never carries a legitimacy rating.
   commentary: { arc: "OPINION DESK", word: "COMMENTARY", filter: "stamp-rough-2" },
-  // Not a trust tier either — opinion/editorial items are pulled out of the
-  // legitimacy pipeline; the stamp is neutral grayscale, never High/Med/Low.
-  opinion: { arc: "EDITORIAL DESK", word: "OPINION", filter: "stamp-rough-2" },
 };
 
 let stampSeq = 0;
@@ -229,14 +223,11 @@ function injectStampDefs() {
 
 function stampHtml(item) {
   const isCommentary = item.kind === "commentary";
-  const isOpinion = item.contentType === "opinion";
-  const level = isCommentary ? "commentary" : isOpinion ? "opinion" : item.trust?.level ?? "low";
+  const level = isCommentary ? "commentary" : item.trust?.level ?? "low";
   const t = STAMP_TEXT[level] ?? STAMP_TEXT.low;
   const word = level === "low" && item.rumor ? "RUMOR" : t.word;
   const reason = isCommentary
     ? `Commentary from ${item.sources?.[0]?.name ?? "an independent channel"} — opinion and analysis, outside the legitimacy tiers; never counted as corroboration.`
-    : isOpinion
-    ? `Opinion/editorial from ${item.sources?.[0]?.name ?? "the wire"} — a viewpoint, not a claim: pulled out of the legitimacy tiers, never counted as corroboration.`
     : item.trust?.reason ?? "";
   const wordSize = word.length > 8 ? 10.5 : 13;
   const id = `stamp-arc-${++stampSeq}`;
@@ -246,7 +237,7 @@ function stampHtml(item) {
        <line x1="16" y1="76" x2="84" y2="30" stroke="currentColor" stroke-width="3.5" opacity="0.8"/>`
     : "";
   return `<span class="stampc stampc--${esc(level)}" role="img"
-      aria-label="${isCommentary ? "Commentary" : isOpinion ? "Opinion" : "Legitimacy"}: ${esc(word)} — ${esc(t.arc)}. ${esc(reason)}"
+      aria-label="${isCommentary ? "Commentary" : "Legitimacy"}: ${esc(word)} — ${esc(t.arc)}. ${esc(reason)}"
       title="${esc(reason)}">
     <svg viewBox="0 0 100 100" aria-hidden="true">
       <g filter="url(#${t.filter})">
@@ -358,118 +349,94 @@ function pulseHtml(item) {
   return pulseEntries(item).slice(0, 2).map(pulseNoteHtml).join("");
 }
 
-/* ---------- per-story opinion (World + India) ----------
-   Two kinds of voices fold out of a story's own OPINION button:
-   1. Columns that topically match the story (story.opinions[]) — pointers
-      only, never sources, never scored.
-   2. Real reader replies from the story's matched Pulse thread
-      (pulse.voices), separated FOR / AGAINST by reply tone — the same
-      lexicon as the pulse aggregates, disclosed as an approximation.
-   Stories with neither show nothing. The full desk-wide column list stays
-   behind the header's OPINION flip. */
+/* ---------- the per-story OPINION card flip (World + India) ----------
+   Stories whose pulse entries retained reaction samples carry an OPINION
+   button; pressing it turns that one card over — the same tilted-axis
+   page-turn as a section switch, scoped to the card's own bounds — to a
+   For/Against split of real Bluesky/YouTube excerpts. No samples, no
+   button: omitted rather than invented. */
 
-function voicesSideHtml(label, cls, messages) {
-  if (!messages?.length) return "";
-  const rows = messages.map((m) =>
-    `<p class="voice">“${esc(deEmoji(m.text))}”<span class="voice-author"> — @${esc(m.author)}${m.likes ? ` · ${m.likes} likes` : ""}</span></p>`).join("");
-  return `<p class="voices-head voices-head--${cls}">${label}</p>${rows}`;
+function hasSamples(item) {
+  return pulseEntries(item).some(
+    (e) => e.samples?.positive?.length || e.samples?.negative?.length
+  );
 }
 
-/* Reader voices merged across every provider entry (Bluesky replies +
-   YouTube comments read the same way), capped per side for the fold. */
-function mergedVoices(item) {
-  const entries = pulseEntries(item);
-  const side = (k) => entries.flatMap((e) => e.voices?.[k] ?? []).slice(0, 4);
-  return { for: side("for"), against: side("against") };
+// merge each bucket across providers, tagged by source, best engagement first
+function mergedSamples(item) {
+  const bucket = (k) =>
+    pulseEntries(item)
+      .flatMap((e) => (e.samples?.[k] ?? []).map((x) => ({ ...x, source: e.source })))
+      .sort((a, b) => (b.engagement ?? 0) - (a.engagement ?? 0));
+  return { positive: bucket("positive"), negative: bucket("negative") };
 }
 
-function opinionCount(item) {
-  const v = mergedVoices(item);
-  return (item.opinions?.length ?? 0) + v.for.length + v.against.length;
+const SOURCE_MARK = { bluesky: "BSKY", youtube: "YT", mastodon: "MSTDN" };
+
+function sampleRowHtml(x) {
+  const quote = `“${esc(deEmoji(x.text))}”`;
+  return `<p class="op-sample">
+      <span class="op-src">${SOURCE_MARK[x.source] ?? esc(x.source)}</span>
+      ${x.permalink ? `<a href="${esc(safeUrl(x.permalink))}" target="_blank" rel="noopener">${quote}</a>` : quote}
+      <span class="op-author">— ${esc(x.author)}</span>
+    </p>`;
 }
 
-function opinionPanelInner(item) {
-  const ops = item.opinions ?? [];
-  const v = mergedVoices(item);
-  const voiceCount = v.for.length + v.against.length;
-  const colRows = ops.slice(0, 3).map((o) =>
-    `<p class="story-opinion-row"><a href="${esc(safeUrl(o.url))}" target="_blank" rel="noopener">${esc(o.source)} — “${esc(deEmoji(o.title))}”</a></p>`).join("");
-  const voices = voiceCount
-    ? `<div class="story-voices">
-        ${voicesSideHtml("Readers for", "for", v.for)}
-        ${voicesSideHtml("Readers against", "against", v.against)}
-        <p class="voices-note">real replies and comments from the matched threads, grouped by tone — an approximation, not a stance classifier</p>
-      </div>`
-    : "";
-  if (!colRows && !voices) {
-    return `<p class="voices-note">No reader discussion found for this story on the wire this time.</p>`;
-  }
-  return colRows + voices;
+// one outbound "More on X →" per provider that matched this story
+function moreLinksHtml(item) {
+  return pulseEntries(item)
+    .map((e) => {
+      const url = e.source === "youtube" ? e.video_url : e.post_url;
+      const name = e.source === "youtube" ? "YouTube" : e.source === "mastodon" ? "Mastodon" : "Bluesky";
+      return url ? `<a class="op-more" href="${esc(safeUrl(url))}" target="_blank" rel="noopener">More on ${name} →</a>` : "";
+    })
+    .join("");
 }
 
-function storyOpinionsHtml(item) {
-  // World + India stories only — never commentary or the columns themselves
-  if (state.tab !== "geopolitics" && state.tab !== "india") return "";
-  if (item.kind === "commentary" || item.contentType === "opinion") return "";
-  const n = opinionCount(item);
-  // without server-side credentials the button only prints where the sweep
-  // already found something
-  if (!n && !state.pulseFetch.enabled) return "";
-  const loaded = n > 0;
-  return `<div class="story-opinions" data-id="${esc(item.id)}" data-loaded="${loaded ? "1" : "0"}">
-      <button type="button" class="opinion-btn" aria-expanded="false">Opinion on this story${n ? ` (${n})` : ""}</button>
-      <div class="story-opinion-list" hidden>${loaded ? opinionPanelInner(item) : ""}</div>
+function opinionBackHtml(item) {
+  const m = mergedSamples(item);
+  const col = (label, cls, rows) => `
+    <div class="opinion-col">
+      <p class="opinion-col-head opinion-col-head--${cls}">${label}</p>
+      ${rows.length ? rows.map(sampleRowHtml).join("") : `<p class="op-empty">No ${cls === "for" ? "positive" : "negative"} reactions in the sample.</p>`}
+      <div class="op-links">${moreLinksHtml(item)}</div>
+    </div>`;
+  return `
+    <div class="card-back-head">
+      <span class="card-back-title">Reader Opinion</span>
+      <button type="button" class="flip-btn" aria-expanded="true">Back</button>
+    </div>
+    <p class="flip-disclosure">Based on comment tone, not a verified stance.</p>
+    <div class="opinion-cols">
+      ${col("For", "for", m.positive)}
+      ${col("Against", "against", m.negative)}
     </div>`;
 }
 
-/* One delegated listener survives every board re-render. First click on a
-   story without stored voices asks the wire live (same server-side-credential
-   pattern as "Search the wire"); after that it's a plain fold. */
-board.addEventListener("click", async (e) => {
-  const btn = e.target.closest(".opinion-btn");
-  if (!btn || btn.disabled) return;
-  const wrap = btn.closest(".story-opinions");
-  const list = wrap.querySelector(".story-opinion-list");
-  if (wrap.dataset.loaded === "1") {
-    const open = list.hidden;
-    list.hidden = !open;
-    btn.setAttribute("aria-expanded", String(open));
-    return;
-  }
-  const section = state.tab;
-  const item = (state.data?.sections?.[section] ?? []).find((i) => i.id === wrap.dataset.id);
-  if (!item) return;
-  btn.disabled = true;
-  const original = btn.textContent;
-  btn.textContent = "Asking the readers…";
-  try {
-    const res = await fetch(`/api/pulse-fetch?section=${section}&id=${encodeURIComponent(item.id)}`, { method: "POST" });
-    const out = await res.json().catch(() => ({}));
-    if (!res.ok || !out.pulse) throw new Error(out.error ?? "no answer");
-    item.pulse = out.pulse;
-    if (out.opinions?.length) item.opinions = out.opinions;
-    list.innerHTML = opinionPanelInner(item);
-    const n = opinionCount(item);
-    btn.textContent = `Opinion on this story${n ? ` (${n})` : ""}`;
-    wrap.dataset.loaded = "1";
-    list.hidden = false;
-    btn.setAttribute("aria-expanded", "true");
-    btn.disabled = false;
-  } catch {
-    btn.textContent = "The wire did not answer";
-    setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 2600);
-  }
-});
-
-async function initPulseFetch() {
-  try {
-    const res = await fetch("/api/pulse-fetch");
-    if (!res.ok) return;
-    const info = await res.json();
-    state.pulseFetch.enabled = !!info.enabled;
-    if (state.pulseFetch.enabled && state.data) renderBoard(); // buttons appear once we know
-  } catch { /* endpoint unreachable — buttons stay content-only */ }
+/* Wraps a card's inner HTML in flip faces when it has reaction samples;
+   otherwise the card renders exactly as before, no button. */
+function flippableCard(cls, inner, item) {
+  if (!hasSamples(item)) return `<article class="${cls}">${inner}</article>`;
+  return `
+    <article class="${cls} card-flippable">
+      <div class="card-leaf">
+        <div class="card-face card-face--front">
+          ${inner}
+          <button type="button" class="flip-btn flip-btn--open" aria-expanded="false">Opinion</button>
+        </div>
+        <div class="card-face card-face--back">${opinionBackHtml(item)}</div>
+      </div>
+    </article>`;
 }
+
+// one delegated listener survives every board re-render
+board.addEventListener("click", (e) => {
+  const btn = e.target.closest(".flip-btn");
+  if (!btn) return;
+  const card = btn.closest("article");
+  const flipped = card.classList.toggle("is-flipped");
+  card.querySelectorAll(".flip-btn").forEach((b) => b.setAttribute("aria-expanded", String(flipped)));
+});
 
 /* Pull quote only when the story actually contains one — a real quotation
    in the wire copy, not manufactured emphasis. */
@@ -491,8 +458,7 @@ function leadHtml(item) {
     body = deck.slice(cut[0].length).trim();
   }
   const prose = /^[A-Za-z“"]/.test(body || standfirst);
-  return `
-    <article class="lead">
+  const inner = `
       ${stampHtml(item)}
       ${kicker ? `<p class="kicker">${kicker}</p>` : ""}
       <h2 class="lead-headline"><a href="${esc(safeUrl(item.url))}" target="_blank" rel="noopener">${esc(deEmoji(item.title))}</a></h2>
@@ -506,12 +472,11 @@ function leadHtml(item) {
           ${bylineHtml(item)}
           ${reasonHtml(item)}
           ${commentaryHtml(item)}
-          ${storyOpinionsHtml(item)}
           ${marketHtml(item)}
           ${pulseHtml(item)}
         </div>
-      </div>
-    </article>`;
+      </div>`;
+  return flippableCard("lead", inner, item);
 }
 
 function storyHtml(item, { brief = false, secondary = false } = {}) {
@@ -519,8 +484,7 @@ function storyHtml(item, { brief = false, secondary = false } = {}) {
   const deck = brief ? "" : deckFor(item);
   const showReason = item.trust?.level === "low";
   const cls = brief ? "brief" : secondary ? "story story--secondary" : "story";
-  return `
-    <article class="${cls}">
+  const inner = `
       ${stampHtml(item)}
       ${kicker ? `<p class="kicker">${kicker}</p>` : ""}
       <h3 class="headline"><a href="${esc(safeUrl(item.url))}" target="_blank" rel="noopener">${esc(deEmoji(item.title))}</a></h3>
@@ -529,68 +493,26 @@ function storyHtml(item, { brief = false, secondary = false } = {}) {
       ${bylineHtml(item)}
       ${commentaryHtml(item)}
       ${showReason ? reasonHtml(item) : ""}
-      ${brief ? "" : storyOpinionsHtml(item)}
-      ${brief ? "" : pulseHtml(item)}
-    </article>`;
+      ${brief ? "" : pulseHtml(item)}`;
+  // briefs stay flat — the rail is too tight for a card turn
+  if (brief) return `<article class="${cls}">${inner}</article>`;
+  return flippableCard(cls, inner, item);
 }
 
 const INDIA_BRIEF_TAG = (item) =>
   (item.tags ?? []).some((t) => t !== "Government") && (item.tags ?? []).length > 0;
 
-/* ---------- the OPINION flip view ----------
-   Same section, other side of the sheet: every item stamped OPINION (neutral
-   grayscale — these were pulled out of the trust tiers on purpose), set as
-   brief-style entries in the shared aligned column grid: headline, one-line
-   excerpt, source byline. Importance ranking doesn't apply; recency order. */
-
-function opinionEntryHtml(item) {
-  const excerpt = deckFor(item);
-  return `
-    <article class="story story--opinion">
-      ${stampHtml(item)}
-      <h3 class="headline"><a href="${esc(safeUrl(item.url))}" target="_blank" rel="noopener">${esc(deEmoji(item.title))}</a></h3>
-      ${excerpt ? `<p class="story-summary opinion-excerpt">${esc(excerpt)}</p>` : ""}
-      ${bylineHtml(item)}
-    </article>`;
-}
-
-function renderOpinionBoard(items) {
-  if (!items.length) {
-    board.innerHTML = `
-      <div class="state">
-        <div class="state-title">No Opinion Pieces</div>
-        <p>Nothing on this desk carried an opinion or editorial marking this press run.
-           The desk sweeps a few times a day — columns print here when the wires carry them.</p>
-      </div>`;
-    return;
-  }
-  const cols = columnCount();
-  const pad = (cols - (items.length % cols)) % cols;
-  const fillers = '<div class="story story--filler" aria-hidden="true"></div>'.repeat(pad);
-  board.innerHTML = `<div class="columns">${items.map(opinionEntryHtml).join("")}${fillers}</div>`;
-}
-
 function renderBoard() {
   const meta = SECTION_META[state.tab];
-  const opinionView = state.view === "opinion";
-  sectionBanner.textContent = opinionView ? `${meta.banner} — OPINION` : meta.banner;
-  deskLine.textContent = opinionView
-    ? "Columns and editorials — viewpoints, not claims. Pulled out of the trust tiers; they corroborate nothing."
-    : meta.desk;
+  sectionBanner.textContent = meta.banner;
+  deskLine.textContent = meta.desk;
   scopeBar.hidden = state.tab !== "esports";
   fitBanner(sectionBanner);
-  renderOpinionToggle();
 
   let items = state.data?.sections?.[state.tab] ?? [];
   if (state.tab === "esports" && state.esportsScope === "india") {
     items = items.filter((i) => i.scope === "india");
   }
-  if (opinionView) {
-    renderOpinionBoard(items.filter((i) => i.contentType === "opinion"));
-    return;
-  }
-  // opinion items live behind the OPINION flip, never in the news flow
-  items = items.filter((i) => i.contentType !== "opinion");
   if (!items.length) {
     const copy = state.tab === "esports" && state.esportsScope === "india"
       ? "No India-edition sports signals in the stored sweep. Turn to the Global edition, or wait for the next press run."
@@ -796,33 +718,9 @@ function selectTab(tab) {
   board.setAttribute("aria-labelledby", tab.id);
   flipToNewPage(() => {
     state.tab = tab.dataset.tab;
-    state.view = "news"; // a new section always opens on its news side
     renderBoard();
   });
 }
-
-/* ---------- the OPINION toggle: flip within the section ----------
-   The same page-turn as a section switch, but the sheet lands on the
-   section's own opinion side. Reduced motion follows the established flip
-   behavior (skip to an instant cut). */
-
-const opinionBtn = document.getElementById("opinion-toggle");
-
-function renderOpinionToggle() {
-  // Opinion is a World + India feature — the toggle never prints elsewhere.
-  opinionBtn.hidden = state.tab !== "geopolitics" && state.tab !== "india";
-  const opinionView = state.view === "opinion";
-  opinionBtn.textContent = opinionView ? `Back to ${SECTION_META[state.tab].banner}` : "Opinion";
-  opinionBtn.setAttribute("aria-pressed", String(opinionView));
-}
-
-opinionBtn.addEventListener("click", () => {
-  if (!state.data) return;
-  flipToNewPage(() => {
-    state.view = state.view === "opinion" ? "news" : "opinion";
-    renderBoard();
-  });
-});
 
 scopeBar.querySelectorAll("button").forEach((btn) => {
   btn.addEventListener("click", () => {
@@ -901,4 +799,3 @@ wireBtn.addEventListener("click", wireSearch);
 injectStampDefs();
 load();
 initWireSearch();
-initPulseFetch();
