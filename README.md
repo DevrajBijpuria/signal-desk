@@ -31,10 +31,9 @@ behind free, self-serve credentials and skip cleanly when unset.
   scheduled-function limit.
 - The build command runs the same pipeline and writes `public/data/seed.json`, so a
   fresh deploy has data before the first cron tick.
-- Two reader-triggered endpoints sit beside `/api/news`, both credential-gated
+- One reader-triggered endpoint sits beside `/api/news`, credential-gated
   server-side and merged back into the stored blob: `/api/tavily-fetch` (the
-  per-section "Search the wire" button) and `/api/pulse-fetch` (the per-story
-  "Opinion on this story" button on World/India).
+  per-section "Search the wire" button).
 
 ## Local dev
 
@@ -85,7 +84,7 @@ unset (each documented in its own section below):
 | Variable | Layer |
 |----------|-------|
 | `TAVILY_API_KEY` + `TAVILY_MONTHLY_CREDITS` | Tavily discovery + the "Search the wire" button |
-| `BLUESKY_HANDLE` + `BLUESKY_APP_PASSWORD` | Public Pulse (Bluesky) + the per-story Opinion fetch |
+| `BLUESKY_HANDLE` + `BLUESKY_APP_PASSWORD` | Public Pulse (Bluesky provider) |
 | `YOUTUBE_API_KEY` | Public Pulse (YouTube comments provider) |
 | `MASTODON_ENABLED=true` | Public Pulse Mastodon signal (World only; keyless, just opt-in) |
 
@@ -112,45 +111,6 @@ are also rules (keyword → mechanism → likely direction) and are omitted when
 rule matches, rather than invented.
 
 The tier map lives in [src/scoring.mjs](src/scoring.mjs) — extend it as you add sources.
-
-### Opinion detection & the OPINION flip view
-
-A column from a tier-1 outlet is a viewpoint, not a claim — legitimacy scoring
-shouldn't vouch for it. On the **World and India desks only** (Tech & AI and
-Esports carry no opinion handling), [src/opinion.mjs](src/opinion.mjs) flags
-opinion and editorial content from signals already in the fetched data, no
-model: URL path segments (`/opinion/`, `/op-ed/`, `/perspectives/`,
-`/commentary/`, `/editorial/`, `/voices/`, `/column/` and their plurals), RSS
-`<category>` tags ("Opinion", "Editorial", "Comment", …), and byline patterns
-("Opinion by", "contributing columnist"). Flagged items get
-`contentType: "opinion"` and are **pulled out of the legitimacy pipeline
-entirely** — never tier-stamped, never merged into a story's sources, never
-counted as corroboration. The same guard covers Tavily discovery and the
-on-demand wire search.
-
-Because opinion pieces sit deep in section feeds (below the news of the
-hour), each World/India feed also keeps up to 3 opinion-flagged entries from
-beyond its normal item cap — otherwise the head-slice almost never carries one.
-
-Two ways onto the page, both World/India only. **Per story:** every story
-carries an "Opinion on this story" button. Stories the sweep already enriched
-unfold instantly; on any other story the first click **asks the wire live**
-(`netlify/functions/pulse-fetch.mjs` — the Bluesky credentials stay
-server-side, one search + one thread read per click, stored back into the
-blob for later readers). The panel holds two kinds of voices — columns that
-topically match the story (same title-overlap rule as dedupe, pinned as
-pointers), and **real reader replies from the matched thread, separated
-"Readers for" / "Readers against" by reply tone** (top-liked first, capped
-per side, quoted with author and like count, always carrying the disclosure
-that tone-grouping is an approximation, not a stance classifier). No
-discussion found says so plainly. Without the Bluesky env vars the button
-only prints where a sweep already stored something. **Per desk:** the section
-header's
-OPINION toggle turns the sheet (the same page-flip as a section switch) to a
-"[SECTION] — OPINION" view listing every flagged item as a brief entry with a
-neutral grayscale OPINION stamp, one-line excerpt, and source byline. Opinion
-items never appear in the regular news columns, and a desk with no opinion
-pieces says so plainly instead of showing an empty layout.
 
 ## Sources & quirks
 
@@ -240,9 +200,20 @@ shared split-tone rule alone. No LLM anywhere — lexicon and rules only, same
 as the legitimacy scoring. Stories with no qualifying match carry `pulse: []`
 and render nothing — omitted, not invented. Matched post URIs and video IDs
 are stored so later sweeps re-fetch fresh numbers directly instead of
-re-searching. Each entry also keeps a handful of the actual replies/comments
-as **voices**, split "Readers for" / "Readers against" by tone sign — these
-unfold from the per-story Opinion button alongside any matched columns.
+re-searching.
+
+**The per-story OPINION card flip:** during the same tone-bucketing pass that
+feeds the aggregates, each provider entry retains up to 6 **samples** per
+bucket (`samples: { positive, negative }`, each `{ text, author, permalink,
+engagement }`, best engagement first; neutral comments aren't stored). Any
+World/India card whose pulse entries carry samples grows an **OPINION** button
+that turns that single card over — the same tilted-axis 780ms page-turn as a
+section switch, scoped to the card, instant cut under `prefers-reduced-motion`
+— onto a two-column **For / Against** back: real Bluesky and YouTube excerpts
+merged and engagement-sorted, each tagged BSKY/YT with its author, a one-line
+disclosure ("Based on comment tone, not a verified stance"), and a
+"More on Bluesky/YouTube →" link out to each matched thread. No samples, no
+button. BACK turns the card to its front.
 
 **The credentials, stated plainly:** this project's posture is keyless, and
 Pulse is the intentional exception — but a materially lighter one than a
@@ -357,9 +328,9 @@ struck-through Ink Black stamp (double-struck ring + strike line) — how every
 rumor and unconfirmed lineup move runs until a tier-1 source corroborates. The
 one-line reason and the source link(s) stay attached to every story — printed
 in the lead rail and on Low-trust stories, and always in the stamp's tooltip
-and accessible label. Two neutral grayscale stamps sit deliberately outside
-the tier system: **COMMENTARY** (YouTube channel videos) and **OPINION**
-(flagged editorial items) — categories, not ratings.
+and accessible label. One neutral grayscale stamp sits deliberately outside
+the tier system: **COMMENTARY** (YouTube channel videos) — a category, not a
+rating.
 
 **Fonts are free substitutes** for the commercial Miranda faces, mapped in
 `scripts/build-tokens.mjs` (`FONT_SUBS`) so a licensed swap later is one line:

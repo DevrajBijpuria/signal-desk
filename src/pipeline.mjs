@@ -6,7 +6,6 @@ import { marketNote } from "./market.mjs";
 import { fetchEsports } from "./esports.mjs";
 import { fetchTavilyDiscovery } from "./tavily.mjs";
 import { fetchCommentary, attachCommentary } from "./commentary.mjs";
-import { detectOpinion } from "./opinion.mjs";
 
 const FEEDS = {
   tech: [
@@ -180,71 +179,12 @@ function tagIndia(item) {
 
 // ---------- Section builders ----------
 
-// Opinion handling is a World + India feature only. Opinion items never enter
-// dedupe or scoring: a column merging into a news story would count as
-// corroboration, and a tier stamp would vouch for a viewpoint. They ride at
-// the END of the section array, unscored, flagged contentType: "opinion".
-// Feed items are flagged in fetchFeed (where the <category> tags are still in
-// hand, via def.opinion); this catches the rest (gnews-sourced wires, GDELT,
-// Tavily) from URL/title/summary alone.
-function splitOpinion(items) {
-  for (const it of items) {
-    if (!it.contentType && detectOpinion(it)) it.contentType = "opinion";
-  }
-  const news = items.filter((i) => i.contentType !== "opinion");
-  const seen = new Set();
-  const opinion = items.filter((i) => {
-    if (i.contentType !== "opinion") return false;
-    const key = i.title.toLowerCase().replace(/\s+/g, " ");
-    if (seen.has(i.id) || seen.has(key)) return false; // same column via two feeds
-    seen.add(i.id);
-    seen.add(key);
-    return true;
-  });
-  opinion.sort((a, b) => (b.publishedAt ?? "").localeCompare(a.publishedAt ?? ""));
-  return { news, opinion };
-}
-
-function finish(items, { cap = 30, sort = true, opinion = false } = {}) {
-  if (!opinion) {
-    const deduped = dedupeItems(items).map(scoreItem);
-    if (sort) deduped.sort((a, b) => (b.publishedAt ?? "").localeCompare(a.publishedAt ?? ""));
-    return deduped.slice(0, cap);
-  }
-  const split = splitOpinion(items);
-  const deduped = dedupeItems(split.news).map(scoreItem);
+function finish(items, { cap = 30, sort = true } = {}) {
+  const deduped = dedupeItems(items).map(scoreItem);
   if (sort) {
     deduped.sort((a, b) => (b.publishedAt ?? "").localeCompare(a.publishedAt ?? ""));
   }
-  return [...deduped.slice(0, cap), ...split.opinion];
-}
-
-/**
- * Per-story opinion: a column that topically matches a news story (same
- * title-overlap rule as dedupe/commentary) is pinned onto it as
- * story.opinions[] — a pointer list, never a source merge, never scored.
- * The column also stays in the desk's opinion list for browsing. Exported
- * for tests; mutates and returns `items`.
- */
-export function attachOpinions(items) {
-  const news = items.filter((i) => i.contentType !== "opinion" && i.kind !== "commentary");
-  for (const op of items.filter((i) => i.contentType === "opinion")) {
-    const opTokens = titleTokens(op.title);
-    const match = news.find((n) => similarTitles(titleTokens(n.title), opTokens));
-    if (match) {
-      match.opinions ??= [];
-      // idempotent — the on-demand wire search re-runs this over the same list
-      if (!match.opinions.some((o) => o.url === op.url)) {
-        match.opinions.push({
-          title: op.title,
-          url: op.url,
-          source: op.sources?.[0]?.name ?? op.sources?.[0]?.domain ?? "",
-          publishedAt: op.publishedAt,
-        });
-      }
-    }
-  }
-  return items;
+  return deduped.slice(0, cap);
 }
 
 // Tavily discovery items enter each section BEFORE dedupe + scoring, so a
@@ -270,45 +210,37 @@ const NOT_GEOPOLITICS =
 async function buildGeopolitics(stats, tavilyP) {
   const [results, tavily] = await Promise.all([
     Promise.all([
-      ...FEEDS.geo.map((def) => fetchFeed({ ...def, opinion: true }, stats)),
+      ...FEEDS.geo.map((def) => fetchFeed(def, stats)),
       fetchGdelt(stats),
     ]),
     tavilyP,
   ]);
   const newsOnly = [...results.flat(), ...tavily.geopolitics]
     .filter((i) => !NOT_GEOPOLITICS.test(i.title));
-  return attachOpinions(finish(newsOnly, { cap: 30, opinion: true }).map((item) => {
-    if (item.contentType === "opinion") return item;
+  return finish(newsOnly, { cap: 30 }).map((item) => {
     const m = marketNote(`${item.title} ${item.summary}`);
     if (m) item.market = m;
     return item;
-  }));
+  });
 }
 
 async function buildIndia(stats, tavilyP) {
   const [results, tavily] = await Promise.all([
-    Promise.all(FEEDS.india.map((def) => fetchFeed({ ...def, opinion: true }, stats))),
+    Promise.all(FEEDS.india.map((def) => fetchFeed(def, stats))),
     tavilyP,
   ]);
-  const all = finish([...results.flat(), ...tavily.india], { cap: 999, opinion: true });
-  // Opinion rides outside the seat math — it competes with nothing.
-  const opinion = all.filter((i) => i.contentType === "opinion");
-  const deduped = all.filter((i) => i.contentType !== "opinion");
+  const deduped = finish([...results.flat(), ...tavily.india], { cap: 999 });
   // PIB publishes less often than the dailies, so pure recency would squeeze
   // government releases out entirely. Reserve up to 5 seats, then re-sort.
   const pib = deduped.filter((i) => i.sources.some((s) => s.domain === "pib.gov.in")).slice(0, 5);
   const rest = deduped.filter((i) => !pib.includes(i)).slice(0, 30 - pib.length);
-  return attachOpinions(
-    [...pib, ...rest]
-      .sort((a, b) => (b.publishedAt ?? "").localeCompare(a.publishedAt ?? ""))
-      .map(tagIndia)
-      .concat(opinion)
-  );
+  return [...pib, ...rest]
+    .sort((a, b) => (b.publishedAt ?? "").localeCompare(a.publishedAt ?? ""))
+    .map(tagIndia);
 }
 
 async function buildEsports(stats, tavilyP) {
   // Items arrive pre-sorted (ongoing → results → roster → upcoming); keep that order.
-  // No opinion handling here — the Opinion feature is World + India only.
   const [items, tavily] = await Promise.all([fetchEsports(stats), tavilyP]);
   // Esports skips dedupeItems (order is meaningful), so Tavily merges by hand:
   // a title match adds a corroborating source; anything else appends, scored
@@ -360,22 +292,11 @@ export function mergeManualDiscovery(sections, querySection, discovered) {
   const { key, scope } = TARGET[querySection];
   const items = sections[key];
   let added = 0, corroborated = 0;
-  const opinionDesk = key === "geopolitics" || key === "india";
   for (const d of discovered) {
     if (key === "geopolitics" && NOT_GEOPOLITICS.test(d.title)) continue;
-    // Opinion discovery (World/India desks only) is listed, never merged: it
-    // can't corroborate a story and it carries no tier score. A topical match
-    // also pins it onto that story's opinions[].
-    if (opinionDesk && !d.contentType && detectOpinion(d)) d.contentType = "opinion";
-    if (d.contentType === "opinion") {
-      items.push(d);
-      attachOpinions(items);
-      added++;
-      continue;
-    }
     const dTokens = titleTokens(d.title);
     const match = items.find(
-      (it) => it.kind !== "commentary" && it.contentType !== "opinion" && similarTitles(titleTokens(it.title), dTokens)
+      (it) => it.kind !== "commentary" && similarTitles(titleTokens(it.title), dTokens)
     );
     if (match) {
       const s = d.sources[0];
