@@ -1,9 +1,11 @@
 # Signal Desk
 
-A personal news intelligence desk: **Tech & AI · Geopolitics · India · Esports**, each item
-scored for legitimacy by rules (no model anywhere in the loop), rendered as a
-signals-desk board. Built to run **at zero ongoing cost** on Netlify's free tier —
-no paid APIs, no keys, no database.
+A personal news intelligence desk: **Tech & AI · Geopolitics (World) · India ·
+Esports**, each item scored for legitimacy by rules (no model anywhere in the
+loop), rendered as an 1890s broadsheet newspaper. Built to run **at zero
+ongoing cost** on Netlify's free tier — no paid APIs, no database, no required
+keys. A handful of optional layers (Tavily discovery, Public Pulse) are gated
+behind free, self-serve credentials and skip cleanly when unset.
 
 ## Architecture
 
@@ -29,6 +31,10 @@ no paid APIs, no keys, no database.
   scheduled-function limit.
 - The build command runs the same pipeline and writes `public/data/seed.json`, so a
   fresh deploy has data before the first cron tick.
+- Two reader-triggered endpoints sit beside `/api/news`, both credential-gated
+  server-side and merged back into the stored blob: `/api/tavily-fetch` (the
+  per-section "Search the wire" button) and `/api/pulse-fetch` (the per-story
+  "Opinion on this story" button on World/India).
 
 ## Local dev
 
@@ -73,10 +79,19 @@ netlify deploy --prod
 Or push to GitHub and click **Add new site → Import an existing project** in the
 Netlify UI — `netlify.toml` already declares the build command and publish
 directory. **There are no required environment variables** — the whole pipeline
-is free and keyless. Two optional layers are env-gated and skip cleanly when
-unset: `TAVILY_API_KEY` + `TAVILY_MONTHLY_CREDITS` for Tavily discovery, and
-`BLUESKY_HANDLE` + `BLUESKY_APP_PASSWORD` for Public Pulse (see each section
-below).
+is free and keyless. The optional layers are env-gated and skip cleanly when
+unset (each documented in its own section below):
+
+| Variable | Layer |
+|----------|-------|
+| `TAVILY_API_KEY` + `TAVILY_MONTHLY_CREDITS` | Tavily discovery + the "Search the wire" button |
+| `BLUESKY_HANDLE` + `BLUESKY_APP_PASSWORD` | Public Pulse (Bluesky) + the per-story Opinion fetch |
+| `YOUTUBE_API_KEY` | Public Pulse (YouTube comments provider) |
+| `MASTODON_ENABLED=true` | Public Pulse Mastodon signal (World only; keyless, just opt-in) |
+
+For local dev, the same variables live in a gitignored `.env` that
+`netlify dev` and `node --env-file=.env` pick up automatically — never
+committed, never hardcoded.
 
 ## Legitimacy scoring (the core feature)
 
@@ -145,7 +160,7 @@ pieces says so plainly instead of showing an empty layout.
 | Geopolitics | BBC World, Reuters, AP, Al Jazeera, The Guardian, DW, France 24, NPR World, UN News, GDELT DOC API | Reuters/AP retired public RSS — fetched via Google News RSS scoped to `site:reuters.com/world` / `site:apnews.com "world news"`, which preserves the original outlet for scoring. Sports/entertainment are filtered out |
 | India | PIB, The Hindu (National + Other States), Indian Express, Hindustan Times, NDTV, Times of India | PIB's own RSS currently serves Hindi with no dates, so PIB comes via Google News scoped to `site:pib.gov.in`. PIB gets a reserved quota so dailies can't crowd government releases out |
 | Esports | Liquipedia (VALORANT, CS2, Dota 2, PUBG Mobile/BGMI main pages + per-wiki Esports World Cup pages), Dexerto Esports, Dot Esports | All Liquipedia calls share one queue: spaced ~2s, descriptive User-Agent, hard time budget. BGMI events drive the India toggle; EWC pages are India-scoped when an Indian org appears among participants. **Update the contact email in `src/esports.mjs` (`LP_UA`) if you fork this** |
-| World + India (Public Pulse) | Bluesky (search via app-password session; threads via public.api.bsky.app, no auth), optionally Mastodon hashtag timelines (World only) | Reader reaction, not a news source — never merges into an item's source list, never touches the legitimacy tier. Bluesky search ANDs its terms, so queries stay at 4 keywords; matching uses title-side word overlap because plain Jaccard only ever matched verbatim headline-mirror bots (live-verified); zero-engagement matches are discarded |
+| World + India (Public Pulse) | Bluesky (search via app-password session; threads via public.api.bsky.app, no auth), YouTube comments (Data API v3), optionally Mastodon hashtag timelines (World only) | Reader reaction, not a news source — never merges into an item's source list, never touches the legitimacy tier. Bluesky search ANDs its terms, so queries stay at 4 keywords; matching uses title-side word overlap because plain Jaccard only ever matched verbatim headline-mirror bots (live-verified); zero-engagement Bluesky matches are discarded. YouTube's search.list has its own ~100/day bucket, hence a smaller per-desk cap and stored-video-ID reuse |
 
 Dexerto/Dot Esports items are filtered to roster moves, transfers, rumors, and
 EWC coverage. Anything with rumor markers ("reportedly", "in talks", "sources
@@ -218,23 +233,27 @@ collapsed into one figure:
   always shown with its disclosure: *approximation — reply tone vs. headline
   tone, not a stance classifier.*
 
-A **Contested** mark appears when tone splits both ways past ~35% or when the
-post is quote-heavy relative to its likes (Bluesky's quote culture skews
-commentary/pushback). No LLM anywhere — lexicon and rules only, same as the
-legitimacy scoring. Stories with no qualifying match get
-`pulse: { found: false }` and render nothing — omitted, not invented. Matched
-post URIs are stored so later sweeps re-fetch fresh numbers directly instead
-of re-searching.
+A **Contested** mark appears when tone splits both ways past ~35% or (Bluesky
+only) when the post is quote-heavy relative to its likes — Bluesky's quote
+culture skews commentary/pushback; YouTube has no quote analog, so it uses the
+shared split-tone rule alone. No LLM anywhere — lexicon and rules only, same
+as the legitimacy scoring. Stories with no qualifying match carry `pulse: []`
+and render nothing — omitted, not invented. Matched post URIs and video IDs
+are stored so later sweeps re-fetch fresh numbers directly instead of
+re-searching. Each entry also keeps a handful of the actual replies/comments
+as **voices**, split "Readers for" / "Readers against" by tone sign — these
+unfold from the per-story Opinion button alongside any matched columns.
 
-**The one credential, stated plainly:** Bluesky's public read API
-(`public.api.bsky.app`) needs no auth, but keyword *search* needs a session.
-That session comes from an **app password** — generated instantly in your own
-Bluesky account settings (Settings → App Passwords), no developer application,
-no approval queue, no review wait. It is a materially lighter tradeoff than an
-OAuth app registration, and it is this project's one intentional exception to
-the fully keyless posture. Set `BLUESKY_HANDLE` and `BLUESKY_APP_PASSWORD`
-(never the account's main password) in Netlify env settings; if either is
-unset, Pulse silently no-ops and the sweep runs exactly as before.
+**The credentials, stated plainly:** this project's posture is keyless, and
+Pulse is the intentional exception — but a materially lighter one than a
+typical OAuth registration. Bluesky's public read API needs no auth; keyword
+*search* needs a session from an **app password**, generated instantly in your
+own account settings (Settings → App Passwords) — no developer application, no
+approval queue. YouTube's Data API key is equally self-serve from Google Cloud
+Console — no review, no card. Set `BLUESKY_HANDLE` + `BLUESKY_APP_PASSWORD`
+(never the account's main password) and `YOUTUBE_API_KEY` in Netlify env
+settings; any that are unset make that provider silently no-op while the rest
+of the sweep runs exactly as before.
 
 **Mastodon secondary signal** (World only, off by default): set
 `MASTODON_ENABLED=true` to also match against public hashtag timelines on
@@ -245,7 +264,9 @@ fediverse political discussion is thin.
 
 ## YouTube commentary (no key needed)
 
-Channel RSS (`youtube.com/feeds/videos.xml?channel_id=…`) fetched exactly like
+Distinct from the Pulse YouTube *comments* provider above: this layer follows
+whole channels, needs no key, and applies to every section. Channel RSS
+(`youtube.com/feeds/videos.xml?channel_id=…`) is fetched exactly like
 the other feeds. The channel list lives in
 [src/commentary-channels.mjs](src/commentary-channels.mjs), grouped by section —
 edit it there; the fetch logic never changes. Everything from this source is
@@ -336,7 +357,9 @@ struck-through Ink Black stamp (double-struck ring + strike line) — how every
 rumor and unconfirmed lineup move runs until a tier-1 source corroborates. The
 one-line reason and the source link(s) stay attached to every story — printed
 in the lead rail and on Low-trust stories, and always in the stamp's tooltip
-and accessible label.
+and accessible label. Two neutral grayscale stamps sit deliberately outside
+the tier system: **COMMENTARY** (YouTube channel videos) and **OPINION**
+(flagged editorial items) — categories, not ratings.
 
 **Fonts are free substitutes** for the commercial Miranda faces, mapped in
 `scripts/build-tokens.mjs` (`FONT_SUBS`) so a licensed swap later is one line:
@@ -350,7 +373,8 @@ non-blocking.
 
 **Google Stitch (MCP) is an optional design-time aid only** — it was available
 for drafting layouts during development and is not a runtime dependency. The
-deployed site stays static, keyless, and free with no environment variables.
+deployed frontend stays static and free: every credential-gated call runs
+server-side in a Netlify function, and no key ever reaches the browser.
 
 ## Retired assets
 

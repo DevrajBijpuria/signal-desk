@@ -13,10 +13,13 @@ item **rule-scored for legitimacy** (no model anywhere in the loop) and rendered
 an 1890s broadsheet newspaper (the "Miranda" theme).
 
 **Two hard constraints that override any convenience:**
-1. **Zero ongoing cost** — no paid APIs, no keys, no database, everything on
-   Netlify's free tier. No required environment variables. (Tavily discovery is
-   the one env-gated optional: `TAVILY_API_KEY` + `TAVILY_MONTHLY_CREDITS`, never
-   hardcoded, skips cleanly when unset.)
+1. **Zero ongoing cost** — no paid APIs, no database, everything on Netlify's
+   free tier. No REQUIRED environment variables; the env-gated optionals all
+   skip cleanly when unset and are never hardcoded: `TAVILY_API_KEY` +
+   `TAVILY_MONTHLY_CREDITS` (discovery), `BLUESKY_HANDLE` +
+   `BLUESKY_APP_PASSWORD` and `YOUTUBE_API_KEY` (Public Pulse),
+   `MASTODON_ENABLED` (opt-in flag, keyless). Locally they live in the
+   gitignored `.env` (`netlify dev` and `node --env-file=.env` pick it up).
 2. **Legitimacy scoring stays rule-based** — a source-tier map + corroboration
    bump, never an LLM call.
 
@@ -116,6 +119,13 @@ settled and verified. Frontend re-themes should leave `src/**` and
   therefore keeps up to 3 opinion-flagged entries from beyond the cap. The
   configured India feeds are news-section feeds, so India opinion is often
   legitimately zero — the empty state is correct, not a detection bug.
+- **YouTube Data API v3 returns statistics as STRINGS** (`"viewCount":"10297"`)
+  — `Number()` them before math or storage. `commentsDisabled` arrives as HTTP
+  403 with `error.errors[0].reason === "commentsDisabled"`; made-for-kids
+  videos always have comments disabled, which makes any CoComelon video a free
+  live probe for that error shape. YouTube pulse matches accept on similarity
+  alone (no engagement floor, per spec) — an occasional low-view video match
+  is known behavior, tunable later in pulseConfig if it bothers.
 
 ## Frontend — the Miranda broadsheet
 
@@ -161,11 +171,16 @@ Full details in [README.md](README.md#frontend--the-miranda-broadsheet). The ess
 
 ```bash
 npm install                # netlify-cli is a devDependency; nothing else to set up
-npm run pipeline           # run the sweep once → public/data/seed.json
+npm run pipeline           # run the sweep once → public/data/seed.json (never runs Pulse)
 npm run dev                # netlify dev on http://localhost:8888  (VS Code: Ctrl+Shift+B)
 curl -X POST http://localhost:8888/.netlify/functions/refresh-news   # sweep into local blob (dev only)
 node scripts/build-tokens.mjs   # regenerate tokens.css after editing design/tokens.json
 ```
+
+The optional-layer credentials live in the gitignored `.env` at the repo root —
+`netlify dev` loads it automatically, and standalone scripts get it via
+`node --env-file=.env`. Pulse enrichment runs only in refresh-news.mjs, so the
+seed build stays keyless and pulse-free by design.
 
 Windows shell is PowerShell; a Bash tool is also available. Prefer writing `.mjs`
 scripts to a scratch dir over long inline `node -e` (PowerShell mangles quotes/`[`).
