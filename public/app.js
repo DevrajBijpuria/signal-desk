@@ -26,7 +26,7 @@ const SECTION_META = {
     desk: "The national wire and the states, government releases included.",
   },
   esports: {
-    banner: "SPORTS",
+    banner: "ESPORTS",
     desk: "Results, rosters, and the rumor mill — rumors run stamped, never as settled fact.",
   },
 };
@@ -739,7 +739,7 @@ scopeBar.querySelectorAll("button").forEach((btn) => {
 refreshBtn.addEventListener("click", () => load({ sweep: true }));
 
 /* ---------- search the wire: reader-triggered Tavily fetch ----------
-   One click = one basic search for the open section (the Sports page searches
+   One click = one basic search for the open section (the Esports page searches
    its current edition). The key lives server-side; the count is a shared
    daily pool that resets each UTC day and still draws down the same monthly
    budget ledger as the scheduled sweeps. Button hidden when the layer is off. */
