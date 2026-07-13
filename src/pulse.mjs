@@ -1,10 +1,13 @@
 // Public Pulse — rule-based reader reaction for the World and India desks.
-// Bluesky is the primary source (search needs one authenticated session from
-// an app password; thread reads are public), Mastodon an optional secondary
+// item.pulse is an ARRAY of provider entries (source: "bluesky" | "youtube" |
+// "mastodon"), one per provider that found a qualifying match; [] when none
+// did. Bluesky is the primary source (search needs one authenticated session
+// from an app password; thread reads are public), YouTube comments the second
+// provider (YOUTUBE_API_KEY, self-serve), Mastodon an optional secondary
 // signal for World only. Matching is rule-based word overlap (title-side, see
-// titleOverlap) — no model, no embeddings — and sentiment is the AFINN-165 lexicon via
-// sentimentLexicon.mjs. Every failure degrades to pulse: { found: false };
-// nothing here can fail the sweep.
+// titleOverlap) — no model, no embeddings — and sentiment is the AFINN-165
+// lexicon via sentimentLexicon.mjs, shared by every provider. Every failure
+// degrades to a missing entry; nothing here can fail the sweep.
 import { PULSE_CONFIG as CFG } from "./pulseConfig.mjs";
 import { toneScore } from "./sentimentLexicon.mjs";
 import { titleTokens } from "./dedupe.mjs";
@@ -14,6 +17,12 @@ const FRAMING_NOTE = "approximation — reply tone vs. headline tone, not a stan
 const THREAD_VIEW = "app.bsky.feed.defs#threadViewPost";
 
 let loggedDisabled = false; // env-missing notice prints once per process, not per desk
+let ytLoggedDisabled = false;
+
+// A previous sweep may have stored the old single-object pulse shape; both
+// shapes normalize to an entry array so stored-ID reuse survives the migration.
+const prevEntries = (prev) => (Array.isArray(prev) ? prev : prev?.found ? [prev] : []);
+const prevOf = (prev, source) => prevEntries(prev).find((e) => e.source === source);
 
 // ---------- small fetch helper: status-aware, per-call timeout ----------
 
@@ -247,12 +256,12 @@ async function enrichItemBluesky(item, deskCfg, jwt, ctl, prev) {
     const t = await fetchThread(prev.post_uri, ctl);
     if (t) {
       const p = t.post;
-      item.pulse = buildPulse(item, {
+      item.pulse.push(buildPulse(item, {
         source: "bluesky", post_uri: p.uri, post_url: bskyPostUrl(p.uri, p.author?.handle ?? ""),
         author_handle: p.author?.handle, post_text: p.record?.text,
         like_count: p.likeCount, repost_count: p.repostCount,
         reply_count: p.replyCount, quote_count: p.quoteCount,
-      }, t.replies);
+      }, t.replies));
       return "reused";
     }
     // stored post gone (deleted, blocked) — fall through to a fresh search
@@ -277,12 +286,12 @@ async function enrichItemBluesky(item, deskCfg, jwt, ctl, prev) {
   const t = await fetchThread(best.uri, ctl);
   if (!t) return null;
   const p = t.post;
-  item.pulse = buildPulse(item, {
+  item.pulse.push(buildPulse(item, {
     source: "bluesky", post_uri: p.uri, post_url: bskyPostUrl(p.uri, p.author?.handle ?? ""),
     author_handle: p.author?.handle, post_text: p.record?.text,
     like_count: p.likeCount, repost_count: p.repostCount,
     reply_count: p.replyCount, quote_count: p.quoteCount,
-  }, t.replies);
+  }, t.replies));
   return "matched";
 }
 
@@ -351,20 +360,141 @@ async function enrichItemMastodon(item, pool, ctl) {
         likes: d.favourites_count ?? 0,
       }));
   }
-  item.pulse = buildPulse(item, {
+  item.pulse.push(buildPulse(item, {
     source: "mastodon", post_uri: best.uri, post_url: best.url,
     author_handle: best.acct, post_text: best.text,
     like_count: best.likes, repost_count: best.reblogs,
     reply_count: best.replies, quote_count: 0,
-  }, replies);
+  }, replies));
   return true;
+}
+
+// ---------- YouTube (second provider, World + India) ----------
+
+const YT = "https://www.googleapis.com/youtube/v3";
+const YT_FRAMING_NOTE = "approximation — comment tone vs. headline tone, not a stance classifier";
+
+const ytErrorReason = (data) => data?.error?.errors?.[0]?.reason;
+
+/** Top-level comments for a video → array | "disabled" | null.
+    commentsDisabled is a NORMAL outcome on news videos, not a failure. */
+async function ytComments(key, videoId, ctl) {
+  const { status, data } = await getJson(
+    `${YT}/commentThreads?part=snippet&videoId=${videoId}&order=relevance&maxResults=${CFG.replyCap}&textFormat=plainText&key=${key}`
+  );
+  if (status === 403 && ytErrorReason(data) === "commentsDisabled") return "disabled";
+  if (status === 403 && ytErrorReason(data) === "quotaExceeded") { ctl.ytQuota = true; return null; }
+  if (status !== 200) return null;
+  return (data.items ?? [])
+    .map((t) => {
+      const s = t.snippet?.topLevelComment?.snippet ?? {};
+      return { text: s.textDisplay ?? "", author: s.authorDisplayName ?? "", likes: s.likeCount ?? 0 };
+    })
+    .filter((c) => c.text);
+}
+
+/** Stats + comments for one candidate → entry | "disabled" | null.
+    Stats and comment reads are cheap main-pool units, not search budget. */
+async function ytVideoEntry(item, key, video, ctl) {
+  const { status, data } = await getJson(`${YT}/videos?part=statistics&id=${video.id}&key=${key}`);
+  if (status !== 200) {
+    if (ytErrorReason(data) === "quotaExceeded") ctl.ytQuota = true;
+    return null;
+  }
+  const stats = data.items?.[0]?.statistics;
+  if (!stats) return null; // video deleted/private since it was stored
+  const comments = await ytComments(key, video.id, ctl);
+  if (comments === "disabled") return "disabled";
+  const replies = comments ?? []; // transient comment failure → entry keeps the native numbers
+  const texts = replies.map((r) => r.text);
+  const tone = aggregateTone(texts);
+  const framing = aggregateFraming(item.title, texts);
+  framing.note = YT_FRAMING_NOTE; // comments, not replies — the wording follows the source
+  const likeCount = Number(stats.likeCount ?? 0);
+  return {
+    source: "youtube",
+    found: true,
+    video_id: video.id,
+    video_url: `https://www.youtube.com/watch?v=${video.id}`,
+    video_title: video.title,
+    channel_title: video.channel,
+    view_count: Number(stats.viewCount ?? 0),
+    like_count: likeCount,
+    comment_count: Number(stats.commentCount ?? 0),
+    reaction_tone: tone,
+    framing_alignment: framing,
+    voices: buildVoices(replies),
+    // the shared base rule only (split tone) — YouTube has no quote analog
+    controversial: isControversial(tone, likeCount, 0),
+    fetched_at: new Date().toISOString(),
+  };
+}
+
+async function enrichItemYouTube(item, key, ctl, prev) {
+  // Stored-ID reuse first — it spends ZERO search budget, the scarce resource.
+  if (prev?.video_id) {
+    const r = await ytVideoEntry(
+      item, key,
+      { id: prev.video_id, title: prev.video_title ?? "", channel: prev.channel_title ?? "" },
+      ctl
+    );
+    if (r && r !== "disabled") { item.pulse.push(r); return "reused"; }
+    // stored video gone or comments now off — do NOT burn a search on it;
+    // fresher stories deserve the budget more than a re-match does
+    return null;
+  }
+  if (ctl.ytQuota) return null;
+
+  const q = buildQuery(item.title);
+  if (!q) return null;
+  const storyTime = item.publishedAt ? Date.parse(item.publishedAt) : Date.now();
+  const win = CFG.youtube.windowDays * 86400000;
+  const params = new URLSearchParams({
+    part: "snippet",
+    type: "video",
+    q,
+    maxResults: String(CFG.youtube.searchMaxResults),
+    publishedAfter: new Date(storyTime - win).toISOString(),
+    publishedBefore: new Date(storyTime + win).toISOString(),
+    key,
+  });
+  const { status, data } = await getJson(`${YT}/search?${params}`);
+  if (status === 403 && ytErrorReason(data) === "quotaExceeded") { ctl.ytQuota = true; return null; }
+  if (status !== 200) return null;
+
+  // Best similarity first (title + description vs. headline, same overlap
+  // function as Bluesky, same 0.35 threshold); the next-best candidates are
+  // fallbacks for comments-disabled videos.
+  const tTokens = titleTokens(item.title);
+  const candidates = (data.items ?? [])
+    .map((v) => ({
+      id: v.id?.videoId,
+      title: v.snippet?.title ?? "",
+      channel: v.snippet?.channelTitle ?? "",
+      sim: titleOverlap(tTokens, titleTokens(`${v.snippet?.title ?? ""} ${v.snippet?.description ?? ""}`)),
+    }))
+    .filter((v) => v.id && v.sim >= CFG.similarityThreshold)
+    .sort((a, b) => b.sim - a.sim)
+    .slice(0, CFG.youtube.disabledCommentFallbacks);
+
+  for (const cand of candidates) {
+    if (ctl.ytQuota) return null;
+    const r = await ytVideoEntry(item, key, cand, ctl);
+    if (r === "disabled") continue; // normal on news videos — try the next qualifier
+    if (r) { item.pulse.push(r); return "matched"; }
+    return null;
+  }
+  return null;
 }
 
 /**
  * Reader-triggered pulse for ONE story (the per-story Opinion button):
  * fresh session, same search → match → thread → voices path as the sweep.
- * Returns the pulse object ({ found: false } when nothing qualifies);
- * throws only when the layer itself can't run (no env vars, auth failure).
+ * Bluesky only, deliberately — reader clicks are unbounded and must never
+ * drain YouTube's scarce daily search bucket; YouTube entries arrive with the
+ * scheduled sweeps. Returns the story's pulse entry array ([] when nothing
+ * qualifies); throws only when the layer itself can't run (no env vars,
+ * auth failure).
  */
 export async function fetchPulseForItem(item, desk) {
   const deskCfg = CFG.desks[desk];
@@ -374,8 +504,10 @@ export async function fetchPulseForItem(item, desk) {
   if (!handle || !appPassword) throw new Error("Bluesky credentials not configured");
   const jwt = await createSession(handle, appPassword);
   const ctl = { backoff: false };
-  await enrichItemBluesky(item, deskCfg, jwt, ctl, item.pulse?.found ? item.pulse : undefined);
-  return item.pulse ?? (item.pulse = { found: false });
+  const prev = prevOf(item.pulse, "bluesky");
+  item.pulse = prevEntries(item.pulse).filter((e) => e.source !== "bluesky");
+  await enrichItemBluesky(item, deskCfg, jwt, ctl, prev);
+  return item.pulse;
 }
 
 // ---------- orchestration ----------
@@ -383,17 +515,18 @@ export async function fetchPulseForItem(item, desk) {
 /**
  * Enrich one desk's already-scored items with pulse data, in place. Only the
  * desks named in PULSE_CONFIG are touched — anything else passes through.
- * `prevPulse` maps item.id → the previous sweep's pulse for URI reuse.
- * Never throws; every failure path ends at pulse: { found: false }.
+ * `prevPulse` maps item.id → the previous sweep's pulse for URI/ID reuse.
+ * Never throws; item.pulse is always an array (possibly empty) on targets.
  */
 export async function enrichWithPulse(items, desk, stats = [], prevPulse = new Map()) {
   const deskCfg = CFG.desks[desk];
   if (!deskCfg) return items;
-  const ctl = { backoff: false };
+  const ctl = { backoff: false, ytQuota: false };
   // Commentary and opinion sit outside the news flow — neither gets a pulse.
   const targets = items
     .filter((i) => i.kind !== "commentary" && i.contentType !== "opinion")
     .slice(0, CFG.perDeskCap);
+  for (const t of targets) t.pulse = []; // providers push entries into this
 
   // --- Bluesky, the primary source ---
   const handle = process.env.BLUESKY_HANDLE;
@@ -408,7 +541,9 @@ export async function enrichWithPulse(items, desk, stats = [], prevPulse = new M
     try {
       const jwt = await createSession(handle, appPassword);
       const results = await Promise.all(
-        targets.map((item) => enrichItemBluesky(item, deskCfg, jwt, ctl, prevPulse.get(item.id)).catch(() => null))
+        targets.map((item) =>
+          enrichItemBluesky(item, deskCfg, jwt, ctl, prevOf(prevPulse.get(item.id), "bluesky")).catch(() => null)
+        )
       );
       const matched = results.filter(Boolean).length;
       const reused = results.filter((r) => r === "reused").length;
@@ -419,12 +554,38 @@ export async function enrichWithPulse(items, desk, stats = [], prevPulse = new M
     }
   }
 
+  // --- YouTube, the second provider ---
+  // Its own smaller top-N: search.list draws from a scarce daily bucket
+  // (~100/day), so only the head of the desk gets fresh searches; stored-ID
+  // reuse costs no search budget at all.
+  const ytKey = process.env.YOUTUBE_API_KEY;
+  if (!ytKey) {
+    if (!ytLoggedDisabled) {
+      console.log("pulse: YOUTUBE_API_KEY not set — YouTube provider disabled");
+      ytLoggedDisabled = true;
+    }
+  } else {
+    const started = Date.now();
+    const ytTargets = targets.slice(0, CFG.youtube.perDeskCap);
+    const results = await Promise.all(
+      ytTargets.map((item) =>
+        enrichItemYouTube(item, ytKey, ctl, prevOf(prevPulse.get(item.id), "youtube")).catch(() => null)
+      )
+    );
+    const matched = results.filter(Boolean).length;
+    const reused = results.filter((r) => r === "reused").length;
+    const stat = { id: `pulse-youtube-${desk}`, ok: true, items: matched, reused, ms: Date.now() - started };
+    if (ctl.ytQuota) stat.error = "search quota exhausted — remaining searches skipped, matches kept";
+    stats.push(stat);
+  }
+
   // --- Mastodon, optional secondary signal (never for India) ---
   if (deskCfg.mastodon && process.env.MASTODON_ENABLED === "true") {
     const started = Date.now();
     try {
       const pool = await fetchMastodonPool(ctl);
-      const unfound = targets.filter((i) => !i.pulse?.found);
+      // still Bluesky's understudy: only stories Bluesky didn't match
+      const unfound = targets.filter((i) => !i.pulse.some((e) => e.source === "bluesky"));
       const hits = await Promise.all(unfound.map((item) => enrichItemMastodon(item, pool, ctl).catch(() => false)));
       stats.push({
         id: `pulse-mastodon-${desk}`, ok: true, items: hits.filter(Boolean).length,
@@ -435,6 +596,5 @@ export async function enrichWithPulse(items, desk, stats = [], prevPulse = new M
     }
   }
 
-  for (const t of targets) if (!t.pulse) t.pulse = { found: false };
-  return items;
+  return items; // every target carries its entry array, [] when no provider matched
 }
