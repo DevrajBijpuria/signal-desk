@@ -59,16 +59,26 @@ export function buildQuery(title) {
   raw.forEach((word, i) => {
     const w = word.replace(/[''’']s?$/u, ""); // possessives narrow an AND search ("Ukraine's" ≠ "Ukraine")
     const lw = w.toLowerCase();
-    if (w.length < 3 || STOPWORDS.has(lw) || seen.has(lw)) return;
+    // Keep all-caps 2-letter acronyms (ED, SC, PM, UK, US, EU) — they carry the
+    // subject in Indian wire copy and in world headlines, but are short enough
+    // to be dropped by a plain length floor.
+    const acronym = w.length === 2 && w === w.toUpperCase() && /[A-Z]/.test(w);
+    if ((w.length < 3 && !acronym) || STOPWORDS.has(lw) || seen.has(lw)) return;
     seen.add(lw);
-    // Sentence-case makes a capitalized first word ambiguous, but headlines
-    // lead with their key entity often enough that dropping it costs more
-    // ("Ukraine's Zelensky…" losing Ukraine) than an occasional "Badly" keeps.
-    cands.push({ w, i, proper: /^\p{Lu}/u.test(w) ? 1 : 0 });
+    cands.push({ w, i, cap: /^\p{Lu}/u.test(w) ? 1 : 0 });
   });
-  cands.sort((a, b) => b.proper - a.proper || b.w.length - a.w.length || a.i - b.i);
-  return cands
-    .slice(0, CFG.maxQueryTokens)
+  if (!cands.length) return "";
+  // Title Case headlines (common on Indian desks — NDTV, TOI) capitalize almost
+  // every word, so "is this a proper noun?" carries no signal and length-sorting
+  // keeps long verbs ("Clings", "Speeds") over the subject. When most words are
+  // capitalized, lead with the subject instead: news fronts its who/what, so the
+  // first content words in order beat the longest. Sentence-case wire headlines
+  // (World) keep the proper-noun + length heuristic that already works there.
+  const capRatio = cands.filter((c) => c.cap).length / cands.length;
+  const picked = capRatio > 0.75
+    ? cands.slice(0, CFG.maxQueryTokens)
+    : cands.sort((a, b) => b.cap - a.cap || b.w.length - a.w.length || a.i - b.i).slice(0, CFG.maxQueryTokens);
+  return picked
     .sort((a, b) => a.i - b.i)
     .map((c) => c.w)
     .join(" ")

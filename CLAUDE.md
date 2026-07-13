@@ -109,8 +109,19 @@ settled and verified. Frontend re-themes should leave `src/**` and
   (`titleOverlap`) at the same 0.35 threshold plus a min-engagement floor.
   Pulse adds ~2–4s to the sweep (live: 14.9s total). India desk matches are
   legitimately sparse on quiet days — engaged India discussion exists but
-  often falls outside the 3-day recency window; `found:false` is correct, not
-  a bug.
+  often falls outside the 3-day recency window; an empty `pulse: []` is
+  correct, not a bug.
+- **`buildQuery` branches on headline case.** Indian desks (NDTV, TOI) write
+  Title Case, so "is this capitalized?" carries no signal and length-sorting
+  keeps long verbs ("Clings", "Speeds") over the subject — YouTube then returns
+  drama/gaming spam that the 0.35 similarity gate correctly rejects, so India
+  scored ~0 matches. Fix: when >75% of eligible words are capitalized, lead with
+  the subject (first content words in order) instead of the longest; sentence-
+  case wire headlines (World) keep the proper-noun+length path. Also keeps
+  all-caps 2-letter acronyms (ED, SC, PM, UK, US) that a plain length floor drops.
+  Live-verified India 0→match after the fix. Remaining India ceiling is inherent:
+  much regional news video is Hindi/Malayalam/Punjabi-titled, which a lexical
+  English title-overlap matcher scores low even when the video is the exact story.
 - **YouTube Data API v3 returns statistics as STRINGS** (`"viewCount":"10297"`)
   — `Number()` them before math or storage. `commentsDisabled` arrives as HTTP
   403 with `error.errors[0].reason === "commentsDisabled"`; made-for-kids
