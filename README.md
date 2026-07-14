@@ -245,8 +245,13 @@ edit it there; the fetch logic never changes. Everything from this source is
 legitimacy rating, never joins a story's source list, and never counts toward
 corroboration. A video that topically matches a story rides along under that
 story's byline; the rest run as their own stamped COMMENTARY entries. Uploads
-older than 7 days don't print (max 3 per channel per sweep). The India slot is
-an intentionally empty placeholder.
+older than 7 days don't print (max 3 per channel per sweep). Current roster:
+**Tech/AI** — AI Explained, Yannic Kilcher, Wes Roth, Matt Wolfe, Two Minute
+Papers, Fireship, David Shapiro; **Geopolitics** — Perun, Zeihan, CaspianReport,
+Asianometry, Context Matters; **India** — Ravish Kumar, Punya Prasun Bajpai, The
+Deshbhakt, ThePrint, Satya Hindi, Newslaundry, Sarthak Goswami; plus the Esports
+global/India commentary channels. Every channel ID is resolved from its `@handle`
+page and verified against its feed `<title>` before it's added.
 
 ## Frontend — the Miranda broadsheet
 
@@ -314,19 +319,26 @@ is rasterized to a texture (via `modern-screenshot`, which uses the browser's
 own renderer so the project's modern CSS and web fonts come through — unlike
 html2canvas, which chokes on `color-mix()`), mapped onto a finely subdivided
 `three.js` plane. A custom shader wraps every vertex past a moving curl line
-around a cylinder (`θ = dist/R`, `x' = curl + R·sinθ`, `z' = R·(1−cosθ)`),
-biases that line by `y` so the **top-right corner lifts first**, shades the
-sheet from its deformed normal, and tints the verso slightly darker and warmer.
-A soft shadow band tracks the curl across the page beneath; a short CSS settle
-adds the 2–3px landing flex. The new content sits live in the DOM underneath and
-is revealed as the transparent overlay's sheet rolls away — so both faces are
-the real rendered app, captured only for the ~0.8s motion. The section snapshot
-is trimmed to the visible viewport first (a full section is ~5000px of DOM;
-rasterizing all of it would cost seconds — trimming keeps it ~200ms). Fires once
-per switch (and on the Esports edition toggle), never on the already-open
-section. Under **`prefers-reduced-motion` (or no WebGL) the curl is skipped** —
-the new content cuts in instantly. Vendored, keyless deps in `public/vendor/`;
-`app.js` loads as an ES module.
+around a cylinder (`θ = dist/R`, `x' = curl + R·sinθ`, `z' = R·(1−cosθ)`) whose
+**radius grows through the turn** — a tight corner curl early that widens into a
+loose roll — biases that line by `y` so a **corner lifts first**, and shades the
+sheet from its deformed normal with a **specular glint on the ridge**, soft
+**ambient occlusion at the fold**, and a verso tinted darker and warmer. The turn
+is **direction-signed**: moving to a *later* section curls **forward** (top-right
+corner peels off the left edge); moving **back** to an *earlier* section (e.g.
+World → Tech) mirrors the whole curl — top-left corner peels off the right edge,
+like flipping back a page — and the Opinion card opens forward, closes backward.
+A soft shadow band tracks the curl across the page beneath (mirrored to the
+matching edge per direction); a short CSS settle adds the 2–3px landing flex. The
+new content sits live in the DOM underneath and is revealed as the transparent
+overlay's sheet rolls away — so both faces are the real rendered app, captured
+only for the ~0.8s motion. The section snapshot is trimmed to the visible
+viewport first (a full section is ~5000px of DOM; rasterizing all of it would
+cost seconds — trimming keeps it ~200ms). Fires once per switch (and on the
+Esports edition toggle), never on the already-open section. Under
+**`prefers-reduced-motion` (or no WebGL) the curl is skipped** — the new content
+cuts in instantly. Vendored, keyless deps in `public/vendor/`; `app.js` loads as
+an ES module.
 
 **Legitimacy prints as a circular rubber stamp**, not a gauge — an inked,
 distressed press mark (SVG: double ring, arc text, banner word, stars, a

@@ -479,7 +479,7 @@ board.addEventListener("click", async (e) => {
   applyState(willFlip); // target face live underneath; the synchronous first curl render covers it (no flash)
   curlFlip({
     left: r.left, top: r.top, width: r.width, height: r.height, texCanvas: shot,
-    settleTarget: card,
+    settleTarget: card, dir: willFlip ? 1 : -1, // open curls forward, close curls back
     onDone: () => { delete card.dataset.pfFlipping; },
   });
 });
@@ -689,12 +689,15 @@ document.fonts?.ready?.then(fitBanners);
    rasterized once (modern-screenshot, browser-native) into a texture on a
    finely subdivided plane;
    a custom shader wraps every vertex past a moving curl line around a cylinder
-   (guide's math: θ = dist/R, x' = curl + R·sinθ, z' = R·(1−cosθ)), biases the
-   curl line by y so the TOP-RIGHT corner lifts first, shades the sheet from
-   its post-deform normal, and tints the back face darker/warmer. A soft
-   shadow band tracks the curl across the page beneath, and a short CSS settle
-   adds the 2–3px landing flex. The new content is live in the DOM underneath;
-   the transparent WebGL overlay reveals it as the sheet rolls away. */
+   (guide's math: θ = dist/R, x' = curl + R·sinθ, z' = R·(1−cosθ)) whose radius
+   GROWS through the turn (tight corner curl → loose roll), biases the curl line
+   by y so a corner lifts first, and shades the sheet from its post-deform normal
+   with a specular ridge, fold AO, and a darker/warmer back face. Direction is
+   signed: a forward turn peels the top-right corner off the left edge; a
+   backward turn (flipping back to an earlier section) mirrors it — top-left off
+   the right edge. A soft shadow band tracks the curl across the page beneath,
+   and a short CSS settle adds the 2–3px landing flex. The new content is live in
+   the DOM underneath; the transparent WebGL overlay reveals it as it rolls. */
 
 const FLIP_MS = 820;            // phase-2 arc reads clearly at ~0.8s
 const RASTER_SCALE = 1;         // snapshot scale for the page texture
@@ -705,35 +708,53 @@ const WEBGL_OK = (() => {
   try { return !!document.createElement("canvas").getContext("webgl"); } catch { return false; }
 })();
 
+// uDir = +1 forward turn (top-RIGHT corner lifts, sheet peels off the LEFT);
+// uDir = −1 backward turn — the whole curl is mirrored across the page so the
+// top-LEFT corner lifts and the sheet peels off the RIGHT (flipping back a page).
+// The cylinder math runs in a single "forward" space (px); for a backward turn
+// x is mirrored in and back out, and the screen-space normal x is flipped so a
+// fixed light shades the mirrored ridge correctly.
 const CURL_VERT = `
-  uniform float uCurlX, uR, uTilt, uH;
-  varying vec2 vUv; varying vec3 vNormal; varying float vFront;
+  uniform float uCurlX, uR, uTilt, uH, uW, uDir;
+  varying vec2 vUv; varying vec3 vNormal; varying float vArc;
   void main() {
     vUv = uv;
     vec3 p = position;                 // x in [0,W], y in [0,-H]
+    float px = (uDir > 0.0) ? p.x : (uW - p.x);  // mirror into forward space for a backward turn
     float curl = uCurlX + uTilt * (-p.y) / uH;   // top (y~0) reaches the line first
-    float d = p.x - curl;
+    float d = px - curl;
     vec3 nrm = vec3(0.0, 0.0, 1.0);
+    float arc = 0.0;                   // how far this vertex has wrapped (for AO/spec)
     if (d > 0.0) {
       float theta = d / uR;
-      p.x = curl + uR * sin(theta);
+      px = curl + uR * sin(theta);
       p.z = uR * (1.0 - cos(theta));
       nrm = vec3(-sin(theta), 0.0, cos(theta));
+      arc = theta;
     }
+    p.x = (uDir > 0.0) ? px : (uW - px);         // mirror back out
+    if (uDir < 0.0) nrm.x = -nrm.x;              // screen-space normal follows the mirror
+    vArc = arc;
     vNormal = nrm;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
   }`;
 const CURL_FRAG = `
   precision mediump float;
   uniform sampler2D uTex; uniform vec3 uLight;
-  varying vec2 vUv; varying vec3 vNormal;
+  varying vec2 vUv; varying vec3 vNormal; varying float vArc;
   void main() {
     vec4 c = texture2D(uTex, vUv);
     vec3 n = normalize(vNormal);
-    float shade = clamp(dot(n, normalize(uLight)) * 0.45 + 0.62, 0.4, 1.05);
+    vec3 L = normalize(uLight);
+    float diff = clamp(dot(n, L) * 0.45 + 0.62, 0.4, 1.05);
+    // specular glint riding the curved ridge (guide #3)
+    vec3 H = normalize(L + vec3(0.0, 0.0, 1.0));
+    float spec = pow(max(dot(n, H), 0.0), 22.0) * 0.32;
+    // soft ambient occlusion where the sheet lifts off the flat page (guide #3/#4)
+    float ao = 1.0 - 0.26 * exp(-vArc * 2.4) * step(0.0005, vArc);
     vec3 col = c.rgb;
-    if (!gl_FrontFacing) col = col * 0.7 + vec3(0.06, 0.04, 0.01); // verso: darker + warmer (guide #4)
-    gl_FragColor = vec4(col * shade, c.a);
+    if (!gl_FrontFacing) { col = col * 0.66 + vec3(0.06, 0.04, 0.01); spec *= 0.4; } // verso: darker + warmer
+    gl_FragColor = vec4(col * diff * ao + spec, c.a);
   }`;
 
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -777,12 +798,20 @@ async function snapshotViewport() {
 /* Run one cylindrical curl over a transparent WebGL overlay at the given
    bounds, texturing `texCanvas` (the outgoing snapshot). The incoming content
    is already live underneath. Resolves after the turn + settle. */
-function curlFlip({ left, top, width, height, texCanvas, settleTarget, onDone }) {
+function curlFlip({ left, top, width, height, texCanvas, settleTarget, onDone, dir = 1 }) {
+  dir = dir < 0 ? -1 : 1;
   const stage = document.createElement("div");
   stage.className = "curl-stage";
   Object.assign(stage.style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
   const shadow = document.createElement("div");
   shadow.className = "curl-shadow";
+  if (dir < 0) {
+    // mirror the cast shadow to the right edge for a backward turn
+    shadow.style.left = "auto";
+    shadow.style.right = "0";
+    shadow.style.background =
+      "linear-gradient(270deg, rgba(29,29,27,0) 0%, rgba(29,29,27,0.12) 62%, rgba(29,29,27,0.34) 100%)";
+  }
   stage.appendChild(shadow);
   document.body.appendChild(stage);
 
@@ -803,16 +832,22 @@ function curlFlip({ left, top, width, height, texCanvas, settleTarget, onDone })
   tex.minFilter = THREE.LinearFilter;
   tex.magFilter = THREE.LinearFilter;
 
-  const R = Math.max(26, Math.min(width, height) * 0.09); // curl radius ~ paper stiffness
-  const geo = new THREE.PlaneGeometry(width, height, 90, 44);
+  // Curl radius GROWS through the turn (guide #1/#2): a tight corner curl early,
+  // widening into a loose cylinder as the sheet rolls fully over.
+  const minDim = Math.min(width, height);
+  const R0 = Math.max(15, minDim * 0.045); // tiny initial corner curl
+  const R1 = Math.max(30, minDim * 0.11);  // loose final roll
+  const geo = new THREE.PlaneGeometry(width, height, 120, 50);
   geo.translate(width / 2, -height / 2, 0); // top-left at origin, spanning x∈[0,W], y∈[0,−H]
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       uTex: { value: tex },
-      uCurlX: { value: width + R * 2 },
-      uR: { value: R },
+      uCurlX: { value: width + R1 * 2 },
+      uR: { value: R0 },
       uTilt: { value: CURL_TILT },
       uH: { value: height },
+      uW: { value: width },
+      uDir: { value: dir },
       uLight: { value: new THREE.Vector3(0.35, 0.55, 0.78) },
     },
     vertexShader: CURL_VERT,
@@ -823,8 +858,8 @@ function curlFlip({ left, top, width, height, texCanvas, settleTarget, onDone })
   const mesh = new THREE.Mesh(geo, mat);
   scene.add(mesh);
 
-  const startX = width + R * 2;
-  const endX = -R * Math.PI - width * 0.15; // sweep the curl fully off the left edge
+  const startX = width + R1 * 2;             // fully flat at t=0 (widest radius clears the page)
+  const endX = -R1 * Math.PI - width * 0.18; // sweep the curl fully off the edge at t=1
   let done = false;
   const t0 = performance.now();
 
@@ -849,9 +884,12 @@ function curlFlip({ left, top, width, height, texCanvas, settleTarget, onDone })
     const e = easeInOutCubic(t);           // accelerate in, decelerate before landing (guide #6)
     const curlX = lerp(startX, endX, e);
     mat.uniforms.uCurlX.value = curlX;
-    // soft shadow tracks the curl across the underlying page, peaking mid-turn
+    mat.uniforms.uR.value = lerp(R0, R1, e); // radius grows as the sheet rolls (guide #1/#2)
+    // soft shadow tracks the curl across the underlying page, peaking mid-turn;
+    // mirrored to the opposite edge on a backward turn
     const sx = Math.max(0, Math.min(width, curlX));
-    shadow.style.transform = `translateX(${sx - width}px)`;
+    const off = dir > 0 ? sx - width : width - sx;
+    shadow.style.transform = `translateX(${off}px)`;
     shadow.style.opacity = String(Math.sin(Math.PI * t) * 0.5);
     renderer.render(scene, camera);
     if (t < 1) raf = requestAnimationFrame(frame);
@@ -864,7 +902,7 @@ function curlFlip({ left, top, width, height, texCanvas, settleTarget, onDone })
 
 let flipping = false;
 
-async function flipToNewPage(renderNew) {
+async function flipToNewPage(renderNew, dir = 1) {
   // Reduced motion / no WebGL: skip the curl, swap straight to the new page —
   // the project's established fallback.
   if (!state.data || REDUCED_MOTION.matches || flipping || !WEBGL_OK) {
@@ -886,7 +924,7 @@ async function flipToNewPage(renderNew) {
   renderNew();          // the new section is live in the DOM underneath
   window.scrollTo(0, 0);
   curlFlip({
-    left: 0, top: 0, width: vw, height: vh, texCanvas: shot,
+    left: 0, top: 0, width: vw, height: vh, texCanvas: shot, dir,
     settleTarget: document.querySelector(".paper"),
     onDone: () => { document.body.classList.remove("flipping"); flipping = false; },
   });
@@ -907,6 +945,10 @@ tabs.forEach((tab, i) => {
 
 function selectTab(tab) {
   if (tab.dataset.tab === state.tab) return;
+  // Moving to an EARLIER section curls backward, like flipping back a page
+  // (e.g. World → Tech); a later section curls forward.
+  const fromIdx = tabs.findIndex((t) => t.dataset.tab === state.tab);
+  const dir = tabs.indexOf(tab) < fromIdx ? -1 : 1;
   tabs.forEach((t) => {
     t.setAttribute("aria-selected", String(t === tab));
     t.tabIndex = t === tab ? 0 : -1;
@@ -915,7 +957,7 @@ function selectTab(tab) {
   flipToNewPage(() => {
     state.tab = tab.dataset.tab;
     renderBoard();
-  });
+  }, dir);
 }
 
 scopeBar.querySelectorAll("button").forEach((btn) => {
