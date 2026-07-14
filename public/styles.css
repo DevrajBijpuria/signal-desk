@@ -406,9 +406,9 @@ button {
 .card-leaf {
   position: relative;
   transform-style: preserve-3d;
-  transition: transform 780ms cubic-bezier(0.42, 0, 0.32, 1);
-  will-change: transform;
   height: 100%;
+  /* No CSS transition: the animated turn is the StPageFlip overlay; this is
+     only the instant rest-state face swap once the overlay lands. */
 }
 .card-flippable.is-flipped .card-leaf { transform: rotate3d(0.16, 1, 0, -180deg); }
 .card-face { backface-visibility: hidden; }
@@ -742,78 +742,44 @@ button {
    curl-shade band sweeps across to fake the page catching light as it bends,
    and a cast shadow rakes over the incoming page beneath. Transform + opacity
    only, so it composites on the GPU and stays smooth on mobile. */
-.flip-stage {
+/* ---- the WebGL page-curl overlay (Three.js) ----
+   A transient, non-interactive stage holding the curl's WebGL canvas plus a
+   soft shadow band that tracks the curl across the page beneath. Positioned
+   to the flip's bounds: the full viewport for a section switch, one card's
+   rect for the Opinion turn. The live new content sits in the DOM underneath;
+   the canvas is transparent where the sheet has rolled away. */
+.curl-stage {
   position: fixed;
-  inset: 0;
   z-index: 60;
-  perspective: 2200px;
-  perspective-origin: 74% 12%; /* upper-right: the corner that lifts first */
   pointer-events: none;
-  overflow: hidden;
+  overflow: visible;
 }
-/* the shadow the turning sheet casts on the page already on the stand */
-.flip-cast {
+.curl-stage canvas { position: absolute; inset: 0; }
+/* soft shadow the lifting sheet casts on the page revealed beneath it */
+.curl-shadow {
   position: absolute;
-  inset: 0;
-  background: linear-gradient(100deg, rgba(29, 29, 27, 0.32), rgba(29, 29, 27, 0.05) 42%, transparent 66%);
-  transform-origin: left center;
-  animation: flipcast 780ms cubic-bezier(0.42, 0, 0.3, 1) forwards;
-}
-.leaf {
-  position: absolute;
-  inset: 0;
-  transform-origin: left center;
-  transform-style: preserve-3d;
-  will-change: transform;
-  animation: pageturn 780ms cubic-bezier(0.42, 0, 0.32, 1) forwards;
-}
-.leaf-face {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  backface-visibility: hidden;
-  background: var(--color-parchment);
-}
-.leaf-front > .fold-shot { position: absolute; top: 0; left: 0; }
-/* the verso: blank parchment with a gutter shadow pooling at the spine */
-.leaf-back {
-  transform: rotateY(180deg);
-  background:
-    linear-gradient(270deg, rgba(29, 29, 27, 0.18), transparent 24%),
-    var(--color-parchment);
-  border-right: 1px solid var(--color-charcoal);
-}
-/* the curl highlight — darkens the sheet toward its leading edge, peaking as
-   the page passes edge-on, so the flat leaf reads as a curved surface */
-.leaf-shade {
-  position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  width: 55%;
+  height: 100%;
   pointer-events: none;
-  backface-visibility: hidden;
-  background: linear-gradient(102deg,
-    rgba(29, 29, 27, 0) 46%,
-    rgba(29, 29, 27, 0.06) 66%,
-    rgba(29, 29, 27, 0.34) 88%,
-    rgba(29, 29, 27, 0.5) 100%);
+  background: linear-gradient(90deg,
+    rgba(29, 29, 27, 0) 0%,
+    rgba(29, 29, 27, 0.12) 62%,
+    rgba(29, 29, 27, 0.34) 100%);
   opacity: 0;
-  animation: curlshade 780ms ease-in forwards;
-}
-
-@keyframes pageturn {
-  from { transform: rotate3d(0.16, 1, 0, 0deg); }
-  to   { transform: rotate3d(0.16, 1, 0, -178deg); }
-}
-@keyframes curlshade {
-  0%   { opacity: 0; }
-  50%  { opacity: 1; }
-  100% { opacity: 0.15; }
-}
-@keyframes flipcast {
-  0%   { opacity: 0; transform: skewY(0deg) scaleX(0.2); }
-  40%  { opacity: 1; }
-  100% { opacity: 0; transform: skewY(-4deg) scaleX(1); }
+  will-change: transform, opacity;
 }
 body.flipping { overflow: hidden; }
+
+/* Phase 3 — landing: a short overshoot-and-recover so the sheet flexes ~2–3px
+   and settles rather than stopping dead, per the storyboard's closing frames. */
+@keyframes pf-settle {
+  0%   { transform: translateY(-2.5px); }
+  55%  { transform: translateY(1px); }
+  100% { transform: translateY(0); }
+}
+.pf-settle { animation: pf-settle 220ms cubic-bezier(0.22, 1, 0.36, 1); }
 
 /* ============ responsive ============
    The below-fold grid collapses 3 → 2 → 1 in pure CSS; the 1px gap keeps the
@@ -857,5 +823,5 @@ body.flipping { overflow: hidden; }
     transition: none !important;
   }
   .board.refreshing > * { opacity: 0.7; }
-  .flip-stage { display: none !important; } /* cut straight to the new page */
+  .curl-stage { display: none !important; } /* engine is skipped under reduced motion; belt-and-braces */
 }

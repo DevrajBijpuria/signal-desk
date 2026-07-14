@@ -3,6 +3,9 @@
    ruled columns, briefs rail), every story hand-stamped. No feed fetches
    here — /api/news is a blob read; /data/seed.json is the fallback edition. */
 
+import * as THREE from "/vendor/three.module.min.js";
+import { domToCanvas } from "/vendor/modern-screenshot.mjs";
+
 const state = {
   data: null,
   fromSeed: false,
@@ -429,13 +432,56 @@ function flippableCard(cls, inner, item) {
     </article>`;
 }
 
+// Rasterize one card face flat (transform neutralized, offscreen) to a canvas.
+async function rasterizeFace(faceEl, w, h, bg) {
+  const clone = faceEl.cloneNode(true);
+  Object.assign(clone.style, {
+    transform: "none", backfaceVisibility: "visible", position: "fixed",
+    left: "-99999px", top: "0", width: `${w}px`, height: `${h}px`, background: bg, margin: "0",
+  });
+  document.body.appendChild(clone);
+  try { return await rasterize(clone, { width: w, height: h }); }
+  finally { clone.remove(); }
+}
+
 // one delegated listener survives every board re-render
-board.addEventListener("click", (e) => {
+board.addEventListener("click", async (e) => {
   const btn = e.target.closest(".flip-btn");
   if (!btn) return;
   const card = btn.closest("article");
-  const flipped = card.classList.toggle("is-flipped");
-  card.querySelectorAll(".flip-btn").forEach((b) => b.setAttribute("aria-expanded", String(flipped)));
+  if (!card || card.dataset.pfFlipping) return;
+
+  const applyState = (flipped) => {
+    card.classList.toggle("is-flipped", flipped);
+    card.querySelectorAll(".flip-btn").forEach((b) => b.setAttribute("aria-expanded", String(flipped)));
+  };
+  const willFlip = !card.classList.contains("is-flipped");
+
+  // Reduced motion / no WebGL: swap faces instantly.
+  if (REDUCED_MOTION.matches || !WEBGL_OK) { applyState(willFlip); return; }
+
+  // Curl the card over on the shared WebGL engine, scoped to its own bounds
+  // (never the viewport). The currently-visible face becomes the curling
+  // texture; the target face is set live underneath and revealed as it rolls.
+  const visibleFace = card.querySelector(willFlip ? ".card-face--front" : ".card-face--back");
+  const r = card.getBoundingClientRect();
+  const bg = getComputedStyle(card).backgroundColor;
+
+  card.dataset.pfFlipping = "1";
+  let shot;
+  try {
+    shot = await rasterizeFace(visibleFace, r.width, r.height, bg);
+  } catch {
+    applyState(willFlip);
+    delete card.dataset.pfFlipping;
+    return;
+  }
+  applyState(willFlip); // target face live underneath; the synchronous first curl render covers it (no flash)
+  curlFlip({
+    left: r.left, top: r.top, width: r.width, height: r.height, texCanvas: shot,
+    settleTarget: card,
+    onDone: () => { delete card.dataset.pfFlipping; },
+  });
 });
 
 /* Pull quote only when the story actually contains one — a real quotation
@@ -636,64 +682,214 @@ if (window.ResizeObserver) {
 }
 document.fonts?.ready?.then(fitBanners);
 
-/* ---------- the page flip: the whole sheet turns on its spine ----------
-   A single leaf holds a snapshot of the entire outgoing page (masthead
-   included, offset by the reader's scroll so the turn covers exactly what
-   they see). It hinges on the left spine and sweeps right-to-left; a
-   curl-shade band and a cast shadow do the lighting, so the flat sheet reads
-   as a curving page. The next section is set on the stand beneath before the
-   turn starts, revealed as the sheet lifts away. */
+/* ---------- the page flip: a WebGL Apple-Books page curl (Three.js) ----------
+   The realistic cylindrical curl the storyboard/guide call for can't be done
+   by transforming a rectangle in CSS, so both flips — the section switch and
+   the per-story Opinion card — run a real 3D mesh curl. The outgoing face is
+   rasterized once (modern-screenshot, browser-native) into a texture on a
+   finely subdivided plane;
+   a custom shader wraps every vertex past a moving curl line around a cylinder
+   (guide's math: θ = dist/R, x' = curl + R·sinθ, z' = R·(1−cosθ)), biases the
+   curl line by y so the TOP-RIGHT corner lifts first, shades the sheet from
+   its post-deform normal, and tints the back face darker/warmer. A soft
+   shadow band tracks the curl across the page beneath, and a short CSS settle
+   adds the 2–3px landing flex. The new content is live in the DOM underneath;
+   the transparent WebGL overlay reveals it as the sheet rolls away. */
+
+const FLIP_MS = 820;            // phase-2 arc reads clearly at ~0.8s
+const RASTER_SCALE = 1;         // snapshot scale for the page texture
+const CURL_TILT = 90;           // px of curl-line lead at the top edge vs bottom → top-right lifts first
+const PAPER_BG =
+  getComputedStyle(document.documentElement).getPropertyValue("--color-parchment").trim() || "#e2dedb";
+const WEBGL_OK = (() => {
+  try { return !!document.createElement("canvas").getContext("webgl"); } catch { return false; }
+})();
+
+const CURL_VERT = `
+  uniform float uCurlX, uR, uTilt, uH;
+  varying vec2 vUv; varying vec3 vNormal; varying float vFront;
+  void main() {
+    vUv = uv;
+    vec3 p = position;                 // x in [0,W], y in [0,-H]
+    float curl = uCurlX + uTilt * (-p.y) / uH;   // top (y~0) reaches the line first
+    float d = p.x - curl;
+    vec3 nrm = vec3(0.0, 0.0, 1.0);
+    if (d > 0.0) {
+      float theta = d / uR;
+      p.x = curl + uR * sin(theta);
+      p.z = uR * (1.0 - cos(theta));
+      nrm = vec3(-sin(theta), 0.0, cos(theta));
+    }
+    vNormal = nrm;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+  }`;
+const CURL_FRAG = `
+  precision mediump float;
+  uniform sampler2D uTex; uniform vec3 uLight;
+  varying vec2 vUv; varying vec3 vNormal;
+  void main() {
+    vec4 c = texture2D(uTex, vUv);
+    vec3 n = normalize(vNormal);
+    float shade = clamp(dot(n, normalize(uLight)) * 0.45 + 0.62, 0.4, 1.05);
+    vec3 col = c.rgb;
+    if (!gl_FrontFacing) col = col * 0.7 + vec3(0.06, 0.04, 0.01); // verso: darker + warmer (guide #4)
+    gl_FragColor = vec4(col * shade, c.a);
+  }`;
+
+const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const lerp = (a, b, t) => a + (b - a) * t;
+
+// Rasterize a DOM node to a canvas via the browser's own renderer (SVG
+// foreignObject, with fonts embedded) — unlike html2canvas it handles the
+// project's modern CSS (color-mix / color()) and web fonts.
+async function rasterize(el, { width, height } = {}) {
+  return domToCanvas(el, { width, height, backgroundColor: PAPER_BG, scale: RASTER_SCALE });
+}
+
+/* Snapshot ONLY the visible viewport slice of the page. A full section can be
+   ~5000px / ~1600 nodes tall; foreignObject rasterization is node-bound, so
+   capturing all of it costs seconds. Cloning `.paper` and dropping every node
+   outside the visible band (decided from the live geometry, removed from the
+   clone by index) leaves ~60 nodes and rasterizes in well under 200ms. */
+async function snapshotViewport() {
+  const paper = document.querySelector(".paper");
+  const vw = document.documentElement.clientWidth;
+  const vh = document.documentElement.clientHeight;
+  const scrollY = window.scrollY;
+  const clone = paper.cloneNode(true);
+  const orig = paper.querySelectorAll("*");
+  const cl = clone.querySelectorAll("*");
+  for (let i = orig.length - 1; i >= 0; i--) {
+    const r = orig[i].getBoundingClientRect();
+    if ((r.top > vh + 60 || r.bottom < -60) && cl[i] && cl[i].parentNode) cl[i].remove();
+  }
+  clone.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
+  clone.style.transform = `translateY(${-scrollY}px)`; // pin to what the reader sees
+  clone.style.margin = "0";
+  const wrap = document.createElement("div");
+  wrap.style.cssText = `position:fixed;left:-99999px;top:0;width:${vw}px;height:${vh}px;overflow:hidden;background:${PAPER_BG}`;
+  wrap.appendChild(clone);
+  document.body.appendChild(wrap);
+  try { return { canvas: await rasterize(wrap, { width: vw, height: vh }), vw, vh }; }
+  finally { wrap.remove(); }
+}
+
+/* Run one cylindrical curl over a transparent WebGL overlay at the given
+   bounds, texturing `texCanvas` (the outgoing snapshot). The incoming content
+   is already live underneath. Resolves after the turn + settle. */
+function curlFlip({ left, top, width, height, texCanvas, settleTarget, onDone }) {
+  const stage = document.createElement("div");
+  stage.className = "curl-stage";
+  Object.assign(stage.style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
+  const shadow = document.createElement("div");
+  shadow.className = "curl-shadow";
+  stage.appendChild(shadow);
+  document.body.appendChild(stage);
+
+  const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, premultipliedAlpha: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(width, height, false);
+  renderer.setClearColor(0x000000, 0);
+  const gl = renderer.domElement;
+  gl.style.width = "100%"; gl.style.height = "100%";
+  stage.appendChild(gl);
+
+  const camera = new THREE.OrthographicCamera(0, width, 0, -height, -3000, 3000);
+  camera.position.z = 1500;
+  const scene = new THREE.Scene();
+
+  const tex = new THREE.CanvasTexture(texCanvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+
+  const R = Math.max(26, Math.min(width, height) * 0.09); // curl radius ~ paper stiffness
+  const geo = new THREE.PlaneGeometry(width, height, 90, 44);
+  geo.translate(width / 2, -height / 2, 0); // top-left at origin, spanning x∈[0,W], y∈[0,−H]
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTex: { value: tex },
+      uCurlX: { value: width + R * 2 },
+      uR: { value: R },
+      uTilt: { value: CURL_TILT },
+      uH: { value: height },
+      uLight: { value: new THREE.Vector3(0.35, 0.55, 0.78) },
+    },
+    vertexShader: CURL_VERT,
+    fragmentShader: CURL_FRAG,
+    side: THREE.DoubleSide,
+    transparent: true,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  scene.add(mesh);
+
+  const startX = width + R * 2;
+  const endX = -R * Math.PI - width * 0.15; // sweep the curl fully off the left edge
+  let done = false;
+  const t0 = performance.now();
+
+  const finish = () => {
+    if (done) return;
+    done = true;
+    cancelAnimationFrame(raf);
+    geo.dispose(); mat.dispose(); tex.dispose();
+    try { renderer.forceContextLoss(); } catch { /* not supported */ } // free the GL context now, not at GC
+    renderer.dispose();
+    stage.remove();
+    if (settleTarget && settleTarget.isConnected) {
+      settleTarget.classList.add("pf-settle");
+      setTimeout(() => settleTarget.classList.remove("pf-settle"), 260);
+    }
+    onDone && onDone();
+  };
+
+  let raf = 0;
+  const frame = (now) => {
+    const t = Math.min(1, (now - t0) / FLIP_MS);
+    const e = easeInOutCubic(t);           // accelerate in, decelerate before landing (guide #6)
+    const curlX = lerp(startX, endX, e);
+    mat.uniforms.uCurlX.value = curlX;
+    // soft shadow tracks the curl across the underlying page, peaking mid-turn
+    const sx = Math.max(0, Math.min(width, curlX));
+    shadow.style.transform = `translateX(${sx - width}px)`;
+    shadow.style.opacity = String(Math.sin(Math.PI * t) * 0.5);
+    renderer.render(scene, camera);
+    if (t < 1) raf = requestAnimationFrame(frame);
+    else finish();
+  };
+  renderer.render(scene, camera); // synchronous frame 0 fully covers the bounds → no flash of the swapped content underneath
+  raf = requestAnimationFrame(frame);
+  setTimeout(finish, FLIP_MS + 900); // safety net incl. rasterize slack
+}
 
 let flipping = false;
 
-function flipToNewPage(renderNew) {
-  if (!state.data || REDUCED_MOTION.matches || flipping) {
+async function flipToNewPage(renderNew) {
+  // Reduced motion / no WebGL: skip the curl, swap straight to the new page —
+  // the project's established fallback.
+  if (!state.data || REDUCED_MOTION.matches || flipping || !WEBGL_OK) {
     renderNew();
     return;
   }
-  const paper = document.querySelector(".paper");
-  const vw = document.documentElement.clientWidth;
-  const scrollY = window.scrollY;
-
-  const stage = document.createElement("div");
-  stage.className = "flip-stage";
-  stage.setAttribute("aria-hidden", "true");
-
-  // the outgoing page snapshot, pinned to what the reader currently sees
-  const shot = document.createElement("div");
-  shot.className = "fold-shot";
-  shot.style.width = `${vw}px`;
-  shot.innerHTML = paper.outerHTML;
-  shot.querySelectorAll("[id]").forEach((el) => el.removeAttribute("id"));
-  shot.style.transform = `translateY(${-scrollY}px)`;
-
-  const cast = document.createElement("div");
-  cast.className = "flip-cast";
-  const leaf = document.createElement("div");
-  leaf.className = "leaf";
-  const front = document.createElement("div");
-  front.className = "leaf-face leaf-front";
-  front.appendChild(shot);
-  const back = document.createElement("div");
-  back.className = "leaf-face leaf-back";
-  const shade = document.createElement("div");
-  shade.className = "leaf-shade";
-  leaf.append(front, back, shade);
-  stage.append(cast, leaf);
-
   flipping = true;
-  document.body.classList.add("flipping");
-  document.body.appendChild(stage);
-  renderNew(); // the next page is already on the stand beneath the turning sheet
-  window.scrollTo(0, 0);
-
-  const done = () => {
-    stage.remove();
-    document.body.classList.remove("flipping");
+  let shot, vw, vh;
+  try {
+    // snapshot exactly what the reader sees BEFORE swapping content
+    ({ canvas: shot, vw, vh } = await snapshotViewport());
+  } catch (err) {
+    console.warn("curl: snapshot failed, cutting straight to the new page", err);
+    renderNew();
     flipping = false;
-  };
-  leaf.addEventListener("animationend", done, { once: true });
-  setTimeout(() => { if (stage.isConnected) done(); }, 1400); // safety net
+    return;
+  }
+  document.body.classList.add("flipping");
+  renderNew();          // the new section is live in the DOM underneath
+  window.scrollTo(0, 0);
+  curlFlip({
+    left: 0, top: 0, width: vw, height: vh, texCanvas: shot,
+    settleTarget: document.querySelector(".paper"),
+    onDone: () => { document.body.classList.remove("flipping"); flipping = false; },
+  });
 }
 
 /* ---------- interactions ---------- */
