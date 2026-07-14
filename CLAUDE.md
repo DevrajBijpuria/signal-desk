@@ -51,7 +51,7 @@ Scheduled Netlify function (cron 4×/day)  →  fetch + dedupe + score + tag
 | `src/esports.mjs` | Liquipedia scraping (one spaced queue, budgeted), EWC pages, Dexerto/DotEsports rumor layer. `LP_UA` holds the contact email. |
 | `src/tavily.mjs` | Optional Tavily discovery: 5 fixed queries/run (basic depth), env-gated, Blobs budget ledger (`tavily-usage`) capped at 90% of the monthly plan, allowance spread over days left in the month. Results enter the normal dedupe+score path. Also holds the reader-facing daily pool (`MANUAL_DAILY_CAP` 20/day, `manualUsed` resets each UTC day). |
 | `netlify/functions/tavily-fetch.mjs` | "Search the wire" endpoint: GET = quota, POST ?section= runs one on-demand query and merges into the stored blob via `mergeManualDiscovery` (pipeline.mjs). Key never reaches the client; button hides when env vars are unset. |
-| `src/commentary.mjs` + `src/commentary-channels.mjs` | YouTube channel-RSS commentary layer. **The channel list lives in commentary-channels.mjs — edit there only.** Commentary sits outside the trust tiers: attached post-scoring (`item.commentary[]` on a matched story, `kind:"commentary"` standalone), never corroborates, never stamped High/Med/Low. |
+| `src/commentary.mjs` + `src/commentary-channels.mjs` | YouTube channel-RSS commentary layer. **The channel list lives in commentary-channels.mjs — edit there only**, grouped tech/geopolitics/india/esportsGlobal/esportsIndia; all three news sections now carry channels (India is populated — Ravish Kumar, ThePrint, Newslaundry, …). Every new ID is resolved from its `@handle` `externalId` and verified against the feed `<title>` before adding. Commentary sits outside the trust tiers: attached post-scoring (`item.commentary[]` on a matched story, `kind:"commentary"` standalone), never corroborates, never stamped High/Med/Low. |
 | `src/pulse.mjs` + `src/pulseConfig.mjs` + `src/sentimentLexicon.mjs` | Public Pulse: reader reaction on World/India ONLY — enrichment runs in refresh-news.mjs after scoring, before the blob write; Tech/Esports untouched. `item.pulse` is an ARRAY of provider entries: Bluesky (`BLUESKY_HANDLE`+`BLUESKY_APP_PASSWORD`, app password not the login), YouTube comments (`YOUTUBE_API_KEY` — search.list has its own ~100/day bucket since Jun 2026, hence yt perDeskCap 4 vs bluesky 8 and stored-video-ID reuse; commentsDisabled = normal no-match, try next candidate), optional Mastodon (World only, `MASTODON_ENABLED=true`). AFINN-165 lexicon shared by all providers; `pulse: []` on no match. Each entry also retains `samples: { positive, negative }` — real excerpts (`{text, author, permalink, engagement}`, cap 6/bucket via `samplesPerBucket`) kept during the same tone-bucketing pass; these feed the per-story OPINION card flip. **Tuning knobs live in pulseConfig.mjs.** |
 | `netlify/functions/refresh-news.mjs` | The scheduled sweep. Cron in `export const config`. |
 | `scripts/run-pipeline.mjs` | Runs the pipeline once → `public/data/seed.json` (used by `npm run pipeline` and the build). |
@@ -169,9 +169,14 @@ Full details in [README.md](README.md#frontend--the-miranda-broadsheet). The ess
   texture (`modern-screenshot` / browser-native foreignObject — NOT html2canvas,
   which throws on this project's `color-mix()` tokens), mapped onto a subdivided
   plane, and a custom vertex/fragment shader wraps each vertex past a moving
-  curl line around a cylinder (θ=dist/R, x'=curl+R·sinθ, z'=R·(1−cosθ)), biases
-  the curl line by y so the top-right corner lifts first, shades from the
-  post-deform normal, and tints the verso darker/warmer. The new content is live
+  curl line around a cylinder (θ=dist/R, x'=curl+R·sinθ, z'=R·(1−cosθ)) whose
+  **radius grows through the turn** (`uR` lerps R0→R1: tight corner curl → loose
+  roll), biases the curl line by y so a corner lifts first, and shades from the
+  post-deform normal with a **specular ridge + fold AO** and a darker/warmer
+  verso. **Direction is signed** (`uDir`, mirrors x in/out of a single forward
+  space): forward turn = top-right off the left edge; backward turn (to an
+  EARLIER tab, computed in `selectTab` from tab order) = top-left off the right
+  edge. Opinion card opens forward, closes backward. The new content is live
   underneath; the transparent overlay reveals it as the sheet rolls. A `.pf-settle`
   keyframe adds the 2–3px landing flex. **Vendored deps in `public/vendor/`:
   `three.module.min.js` (+`three.core.min.js`), `modern-screenshot.mjs`; app.js is
@@ -222,7 +227,12 @@ scripts to a scratch dir over long inline `node -e` (PowerShell mangles quotes/`
 
 ## Build history (newest first)
 
-- **v4** (current) — newspaper format: Abril Fatface display face, importance-weighted
+- **v5** (current) — page-curl refinements: direction-signed turn (backward curl
+  when moving to an earlier tab, mirrored across the page), growing curl radius,
+  specular ridge + fold AO, finer mesh. Expanded the YouTube commentary roster —
+  Tech/AI, Geopolitics, and the previously-empty India slot all now carry
+  verified channels.
+- **v4** — newspaper format: Abril Fatface display face, importance-weighted
   front page, aligned shared-grid columns, circular rubber-stamp legitimacy,
   full-page book-flip on section change, dropped "PAGE ONE —" prefix.
 - **v3** — re-themed dark "Slash" → light "Miranda" broadsheet (tokens-driven).
