@@ -8,7 +8,7 @@ of truth is [design/DESIGN.md](design/DESIGN.md) + [design/tokens.json](design/t
 
 **Signal Desk** — a personal news-intelligence desk for one reader (a final-year CS
 student heading into ML / data engineering; it's the only news they read). Four
-sections — **Tech & AI · Geopolitics (World) · India · Esports (Sports)** — each
+sections — **Tech & AI · Geopolitics (World) · India · Esports** — each
 item **rule-scored for legitimacy** (no model anywhere in the loop) and rendered as
 an 1890s broadsheet newspaper (the "Miranda" theme).
 
@@ -167,7 +167,7 @@ Full details in [README.md](README.md#frontend--the-miranda-broadsheet). The ess
   viewport like a bound book (turn.js / Apple Books model) — full-viewport
   `.flip-stage` snapshots the whole page incl. masthead (scroll-offset) into one
   `.leaf` hinged on the left spine, sweeps with a curl-shade + cast shadow. Fires
-  once per switch (and the Sports edition toggle), never on the active section.
+  once per switch (and the Esports edition toggle), never on the active section.
   **Under `prefers-reduced-motion` it's skipped — instant cut.**
 
 ## Local dev
