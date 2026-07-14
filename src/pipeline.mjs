@@ -1,9 +1,11 @@
 import { fetchJson, fetchText, hostOf, hashId, toIso, firstSentences, cleanText } from "./util.mjs";
 import { fetchFeed, parseFeed } from "./feeds.mjs";
-import { dedupeItems } from "./dedupe.mjs";
+import { dedupeItems, titleTokens, similarTitles } from "./dedupe.mjs";
 import { scoreItem } from "./scoring.mjs";
 import { marketNote } from "./market.mjs";
 import { fetchEsports } from "./esports.mjs";
+import { fetchTavilyDiscovery } from "./tavily.mjs";
+import { fetchCommentary, attachCommentary } from "./commentary.mjs";
 
 const FEEDS = {
   tech: [
@@ -185,25 +187,36 @@ function finish(items, { cap = 30, sort = true } = {}) {
   return deduped.slice(0, cap);
 }
 
-async function buildTech(stats) {
-  const results = await Promise.all([
-    fetchHackerNews(stats),
-    fetchArxiv(stats),
-    ...FEEDS.tech.map((def) => fetchFeed(def, stats)),
+// Tavily discovery items enter each section BEFORE dedupe + scoring, so a
+// result matching an existing story merges as a corroborating source (the
+// normal dedupe merge) and a new result is scored through the same tier map
+// as everything else. tavilyP is one shared promise across all builders.
+async function buildTech(stats, tavilyP) {
+  const [results, tavily] = await Promise.all([
+    Promise.all([
+      fetchHackerNews(stats),
+      fetchArxiv(stats),
+      ...FEEDS.tech.map((def) => fetchFeed(def, stats)),
+    ]),
+    tavilyP,
   ]);
-  return finish(results.flat(), { cap: 36 }).map(classifyTech);
+  return finish([...results.flat(), ...tavily.tech], { cap: 36 }).map(classifyTech);
 }
 
 // Sports and entertainment leak into world-news feeds; they aren't geopolitics.
 const NOT_GEOPOLITICS =
   /(world cup|olympic|fifa|football|soccer|tennis|cricket|golf|grand slam|premier league|formula (one|1)|grand prix|\bnba\b|\bnfl\b|\bmlb\b|singer|actor|actress|film|movie|museum|festival|celebrity|box office)/i;
 
-async function buildGeopolitics(stats) {
-  const results = await Promise.all([
-    ...FEEDS.geo.map((def) => fetchFeed(def, stats)),
-    fetchGdelt(stats),
+async function buildGeopolitics(stats, tavilyP) {
+  const [results, tavily] = await Promise.all([
+    Promise.all([
+      ...FEEDS.geo.map((def) => fetchFeed(def, stats)),
+      fetchGdelt(stats),
+    ]),
+    tavilyP,
   ]);
-  const newsOnly = results.flat().filter((i) => !NOT_GEOPOLITICS.test(i.title));
+  const newsOnly = [...results.flat(), ...tavily.geopolitics]
+    .filter((i) => !NOT_GEOPOLITICS.test(i.title));
   return finish(newsOnly, { cap: 30 }).map((item) => {
     const m = marketNote(`${item.title} ${item.summary}`);
     if (m) item.market = m;
@@ -211,9 +224,12 @@ async function buildGeopolitics(stats) {
   });
 }
 
-async function buildIndia(stats) {
-  const results = await Promise.all(FEEDS.india.map((def) => fetchFeed(def, stats)));
-  const deduped = finish(results.flat(), { cap: 999 });
+async function buildIndia(stats, tavilyP) {
+  const [results, tavily] = await Promise.all([
+    Promise.all(FEEDS.india.map((def) => fetchFeed(def, stats))),
+    tavilyP,
+  ]);
+  const deduped = finish([...results.flat(), ...tavily.india], { cap: 999 });
   // PIB publishes less often than the dailies, so pure recency would squeeze
   // government releases out entirely. Reserve up to 5 seats, then re-sort.
   const pib = deduped.filter((i) => i.sources.some((s) => s.domain === "pib.gov.in")).slice(0, 5);
@@ -223,33 +239,111 @@ async function buildIndia(stats) {
     .map(tagIndia);
 }
 
-async function buildEsports(stats) {
+async function buildEsports(stats, tavilyP) {
   // Items arrive pre-sorted (ongoing → results → roster → upcoming); keep that order.
-  const items = await fetchEsports(stats);
-  return items.map(scoreItem).map((item) => {
-    // Rumors never present as settled fact: force Low unless a tier-1 source
-    // (org channel, confirmed Liquipedia entry) corroborates the story.
-    if (item.rumor && item.trust.tier > 1) {
-      const outlet = item.sources[0]?.name ?? "a single outlet";
-      item.trust = {
-        level: "low",
-        tier: item.trust.tier,
-        reason: `Transfer rumor — single unconfirmed report (${outlet}). Not corroborated by an official channel or a confirmed Liquipedia entry.`,
-      };
+  const [items, tavily] = await Promise.all([fetchEsports(stats), tavilyP]);
+  // Esports skips dedupeItems (order is meaningful), so Tavily merges by hand:
+  // a title match adds a corroborating source; anything else appends, scored
+  // by the same scoreItem pass below as the rest of the section.
+  for (const [scope, discovered] of [["global", tavily.esportsGlobal], ["india", tavily.esportsIndia]]) {
+    for (const d of discovered) {
+      const dTokens = titleTokens(d.title);
+      const match = items.find((it) => similarTitles(titleTokens(it.title), dTokens));
+      if (match) {
+        const s = d.sources[0];
+        if (!match.sources.some((k) => k.domain === s.domain)) match.sources.push(s);
+      } else {
+        items.push({ ...d, scope, tags: [] });
+      }
     }
-    return item;
-  });
+  }
+  return items.map(scoreItem).map(applyRumorRule);
+}
+
+// Rumors never present as settled fact: force Low unless a tier-1 source
+// (org channel, confirmed Liquipedia entry) corroborates the story.
+function applyRumorRule(item) {
+  if (item.rumor && item.trust.tier > 1) {
+    const outlet = item.sources[0]?.name ?? "a single outlet";
+    item.trust = {
+      level: "low",
+      tier: item.trust.tier,
+      reason: `Transfer rumor — single unconfirmed report (${outlet}). Not corroborated by an official channel or a confirmed Liquipedia entry.`,
+    };
+  }
+  return item;
+}
+
+/**
+ * Reader-triggered Tavily merge into an ALREADY-SCORED stored sweep (the
+ * scheduled path merges pre-scoring via finish() instead). Same semantics:
+ * a title match gains a corroborating source and is re-scored; anything new
+ * is scored through the tier map and section-tagged. Commentary items are
+ * never match candidates. Mutates `sections`; returns { added, corroborated }.
+ */
+export function mergeManualDiscovery(sections, querySection, discovered) {
+  const TARGET = {
+    tech: { key: "tech" },
+    geopolitics: { key: "geopolitics" },
+    india: { key: "india" },
+    esportsGlobal: { key: "esports", scope: "global" },
+    esportsIndia: { key: "esports", scope: "india" },
+  };
+  const { key, scope } = TARGET[querySection];
+  const items = sections[key];
+  let added = 0, corroborated = 0;
+  for (const d of discovered) {
+    if (key === "geopolitics" && NOT_GEOPOLITICS.test(d.title)) continue;
+    const dTokens = titleTokens(d.title);
+    const match = items.find(
+      (it) => it.kind !== "commentary" && similarTitles(titleTokens(it.title), dTokens)
+    );
+    if (match) {
+      const s = d.sources[0];
+      if (match.sources.some((k) => k.domain === s.domain)) continue; // already on the story
+      match.sources.push(s);
+      scoreItem(match);
+      if (key === "esports") applyRumorRule(match);
+      corroborated++;
+    } else {
+      scoreItem(d);
+      if (key === "tech") classifyTech(d);
+      else if (key === "india") tagIndia(d);
+      else if (key === "geopolitics") {
+        const m = marketNote(`${d.title} ${d.summary}`);
+        if (m) d.market = m;
+      } else if (key === "esports") {
+        d.scope = scope;
+        d.tags = [];
+      }
+      items.push(d);
+      added++;
+    }
+  }
+  return { added, corroborated };
 }
 
 export async function runPipeline() {
   const started = Date.now();
   const stats = [];
-  const [tech, geopolitics, india, esports] = await Promise.all([
-    buildTech(stats),
-    buildGeopolitics(stats),
-    buildIndia(stats),
-    buildEsports(stats),
+  // Tavily and YouTube commentary fetch in parallel with the feed builders —
+  // run serially they'd stack on the esports time budget and threaten the
+  // 30s scheduled-function cap.
+  const tavilyP = fetchTavilyDiscovery(stats);
+  const [commentary, tech, geopolitics, india, esports] = await Promise.all([
+    fetchCommentary(stats),
+    buildTech(stats, tavilyP),
+    buildGeopolitics(stats, tavilyP),
+    buildIndia(stats, tavilyP),
+    buildEsports(stats, tavilyP),
   ]);
+  // Commentary attaches after dedupe + scoring so it can never merge into a
+  // source list or bump a legitimacy rating.
+  attachCommentary(tech, commentary.tech);
+  attachCommentary(geopolitics, commentary.geopolitics);
+  attachCommentary(india, commentary.india);
+  attachCommentary(esports, commentary.esportsGlobal, { scope: "global" });
+  attachCommentary(esports, commentary.esportsIndia, { scope: "india" });
   return {
     generatedAt: new Date().toISOString(),
     durationMs: Date.now() - started,

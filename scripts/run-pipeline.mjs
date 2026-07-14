@@ -24,7 +24,9 @@ for (const [name, items] of Object.entries(data.sections)) {
   console.log(`\n[${name}] ${items.length} items`);
   for (const it of items.slice(0, 3)) {
     console.log(`  · ${it.title.slice(0, 90)}`);
-    console.log(`    trust=${it.trust.level} — ${it.trust.reason}`);
+    console.log(it.kind === "commentary"
+      ? `    commentary — ${it.sources[0]?.name} (outside the trust tiers)`
+      : `    trust=${it.trust.level} — ${it.trust.reason}`);
     if (it.market) console.log(`    market: ${it.market.assets} (${it.market.direction}) — ${it.market.note}`);
   }
 }

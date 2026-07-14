@@ -37,7 +37,7 @@
         <button type="button" role="tab" id="tab-tech" aria-controls="board" aria-selected="true" data-tab="tech">Tech &amp; AI</button>
         <button type="button" role="tab" id="tab-geopolitics" aria-controls="board" aria-selected="false" tabindex="-1" data-tab="geopolitics">World</button>
         <button type="button" role="tab" id="tab-india" aria-controls="board" aria-selected="false" tabindex="-1" data-tab="india">India</button>
-        <button type="button" role="tab" id="tab-esports" aria-controls="board" aria-selected="false" tabindex="-1" data-tab="esports">Sports</button>
+        <button type="button" role="tab" id="tab-esports" aria-controls="board" aria-selected="false" tabindex="-1" data-tab="esports">Esports</button>
       </div>
       <button type="button" class="resync" id="refresh">Resync the presses</button>
     </nav>
@@ -48,11 +48,12 @@
       <div class="section-banner" id="section-banner" aria-hidden="true">TECH</div>
       <div class="section-sub">
         <p class="desk-line" id="desk-line"></p>
-        <div class="edition-switch" id="esports-scope" hidden role="group" aria-label="Sports edition">
+        <div class="edition-switch" id="esports-scope" hidden role="group" aria-label="Esports edition">
           <button type="button" data-scope="global" class="active" aria-pressed="true">Global edition</button>
           <span class="edition-sep" aria-hidden="true">/</span>
           <button type="button" data-scope="india" aria-pressed="false">India edition</button>
         </div>
+        <button type="button" class="wire-search" id="tavily-fetch" hidden>Search the wire</button>
       </div>
       <main id="board" class="board" role="tabpanel" aria-labelledby="tab-tech" tabindex="0"></main>
     </section>
@@ -68,6 +69,6 @@
       </div>
     </footer>
   </div>
-  <script src="/app.js"></script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>

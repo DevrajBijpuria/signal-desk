@@ -162,6 +162,11 @@ Editorial New 16-19px weight 300, Ink Black (#1d1d1b) color, 1px underline offse
 
 Single-line row of Editorial New 14-16px caption text in Charcoal (#69645f) below project description, listing role/agency/year. Acts as a byline.
 
+### Public Pulse Marginalia
+**Role:** Reader-reaction clipping on World/India stories
+
+A letters-to-the-editor clipping pinned beneath the byline: 1px dashed Charcoal (#69645f) cut-line border at 2.88px radius on a Pulse Wash (#d8d2cb) backing — a half-step tint strictly in the neutral family, never a second chromatic accent. Small-caps PUBLIC PULSE head in Editorial New 13px, then an engagement line and two separately labeled metric lines (Reaction Tone, Framing Alignment with its ⓘ approximation note), closing with an underlined "Discussed on Bluesky →" text link. A rotated CONTESTED tag in a 1.5px Ink Black keyline marks split reaction. Renders only when a matched post exists; deliberately unlike both the circular legitimacy stamp and the market wire's solid ticker box. All text in Ink Black — Charcoal stays on the border only.
+
 ## Do's and Don'ts
 
 ### Do

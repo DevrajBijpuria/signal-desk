@@ -8,7 +8,10 @@
   },
   "dependencies": {
     "@netlify/blobs": "^10.7.9",
-    "fast-xml-parser": "^5.9.3"
+    "fast-xml-parser": "^5.9.3",
+    "modern-screenshot": "^4.7.0",
+    "sentiment": "^5.0.2",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "netlify-cli": "^26.2.0"

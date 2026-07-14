@@ -216,6 +216,20 @@ button {
 }
 .edition-sep { font-size: 15px; }
 
+/* reader-triggered Tavily search — an edition-line control, not a web pill */
+.wire-search {
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease;
+}
+.wire-search:hover { color: var(--color-pure-black); text-decoration-thickness: 1.5px; }
+.wire-search[disabled] { opacity: 0.55; cursor: default; text-decoration: none; }
+.wire-search[hidden] { display: none; }
+
+
 /* ============ the board ============ */
 .board { position: relative; padding-top: var(--sp-22); min-height: 320px; }
 
@@ -379,6 +393,116 @@ button {
 .stampc--high { transform: rotate(-8deg); color: var(--color-ember-orange); }
 .stampc--medium { transform: rotate(5deg); opacity: 0.72; color: var(--color-ink-black); } /* the lighter, partial press */
 .stampc--low { transform: rotate(-12deg); color: var(--color-ink-black); }
+/* commentary is a category, not a trust tier — plain ink, a light press */
+.stampc--commentary { transform: rotate(4deg); opacity: 0.62; color: var(--color-ink-black); }
+
+/* ---- the per-story OPINION card flip (World + India) ----
+   Same tilted-axis page-turn as the section switch (rotate3d 0.16,1,0 —
+   top-right corner leads), same 780ms cubic-bezier, scoped to one card.
+   The back face is pre-rotated on the same axis so a 180° leaf turn lands
+   it flat; it scrolls within the card's bounds when the sample list runs
+   longer than the story. */
+.card-flippable { perspective: 1400px; }
+.card-leaf {
+  position: relative;
+  transform-style: preserve-3d;
+  height: 100%;
+  /* No CSS transition: the animated turn is the StPageFlip overlay; this is
+     only the instant rest-state face swap once the overlay lands. */
+}
+.card-flippable.is-flipped .card-leaf { transform: rotate3d(0.16, 1, 0, -180deg); }
+.card-face { backface-visibility: hidden; }
+/* the turned-away face must never catch clicks through the back's gaps */
+.card-flippable.is-flipped .card-face--front { pointer-events: none; }
+.card-face--back {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  transform: rotate3d(0.16, 1, 0, -180deg);
+  background: var(--color-parchment);
+  padding-right: var(--sp-4);
+}
+.lead .card-face--back { background: var(--surface-bone-cream); } /* the lead sits on its card stock */
+.flip-btn {
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease;
+}
+.flip-btn:hover { color: var(--color-pure-black); text-decoration-thickness: 1.5px; }
+.flip-btn--open { display: block; margin-top: var(--sp-7); }
+.card-back-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-10);
+  border-bottom: 2px solid var(--color-ink-black);
+  padding-bottom: var(--sp-4);
+}
+.card-back-title {
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.flip-disclosure {
+  font-size: 12px;
+  font-style: italic;
+  opacity: 0.75;
+  margin: var(--sp-4) 0 var(--sp-7);
+}
+.opinion-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-12);
+}
+.opinion-col { min-width: 0; }
+.opinion-col + .opinion-col { border-left: 1px solid var(--color-charcoal); padding-left: var(--sp-12); }
+.opinion-col-head {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin: 0 0 var(--sp-7);
+}
+.opinion-col-head--for::before { content: "▲ "; }
+.opinion-col-head--against::before { content: "▼ "; }
+.op-sample {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 var(--sp-7);
+  overflow-wrap: anywhere;
+}
+.op-sample a { text-decoration: underline; text-underline-offset: 3px; transition: color 0.15s ease; }
+.op-sample a:hover { color: var(--color-pure-black); text-decoration-thickness: 1.5px; }
+.op-src {
+  display: inline-block;
+  border: 1px solid var(--color-ink-black);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  padding: 0 var(--sp-4);
+  vertical-align: 1px;
+}
+.op-author { font-style: italic; opacity: 0.8; }
+.op-empty { font-size: 13px; font-style: italic; opacity: 0.75; }
+.op-links { margin-top: var(--sp-4); }
+.op-more {
+  display: inline-block;
+  margin-right: var(--sp-10);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (max-width: 640px) {
+  .opinion-cols { grid-template-columns: 1fr; }
+  .opinion-col + .opinion-col { border-left: 0; padding-left: 0; border-top: 1px solid var(--color-charcoal); padding-top: var(--sp-10); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-leaf { transition: none; } /* instant cut, same as the section flip */
+}
 .stamp-arc-text {
   font-family: var(--font-editorial-new);
   font-size: 9px;
@@ -416,6 +540,63 @@ button {
   font-style: italic;
   overflow-wrap: anywhere;
 }
+
+/* commentary links attached under a story's byline */
+.commentary-links {
+  font-size: 13px;
+  line-height: 1.5;
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+.commentary-links a { text-decoration: underline; text-underline-offset: 3px; transition: color 0.15s ease; }
+.commentary-links a:hover { color: var(--color-pure-black); text-decoration-thickness: 1.5px; }
+
+/* ---- Public Pulse: a letters/marginalia clipping, World + India only ----
+   Reader reaction pinned to the story like a clipped letter to the editor:
+   dashed cut-line border on the pulse-wash tint — deliberately unlike the
+   market wire's solid ticker box and the circular legitimacy stamp. Ink for
+   all text (Charcoal fails contrast at these sizes). */
+.pulse {
+  border: 1px dashed var(--color-charcoal);
+  background: var(--color-pulse-wash);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-10) var(--sp-12);
+  margin-top: var(--sp-10);
+  font-size: 13px;
+  line-height: 1.45;
+  max-width: 46ch;
+}
+.pulse-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-10);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: var(--sp-4);
+}
+.pulse-contested {
+  border: 1.5px solid var(--color-ink-black);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--sp-4);
+  letter-spacing: 0.1em;
+  transform: rotate(-2deg);
+}
+.pulse-line { margin: 0 0 var(--sp-4); }
+.pulse-n { opacity: 0.75; }
+.pulse-info {
+  display: inline-block;
+  cursor: help;
+  font-style: normal;
+  padding: 0 2px;
+}
+.pulse-link {
+  display: inline-block;
+  margin-top: var(--sp-4);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.15s ease;
+}
+.pulse-link:hover { color: var(--color-pure-black); text-decoration-thickness: 1.5px; }
 
 /* ---- market wire: a bordered inset, data set like a ticker box ---- */
 .market-wire {
@@ -561,78 +742,44 @@ button {
    curl-shade band sweeps across to fake the page catching light as it bends,
    and a cast shadow rakes over the incoming page beneath. Transform + opacity
    only, so it composites on the GPU and stays smooth on mobile. */
-.flip-stage {
+/* ---- the WebGL page-curl overlay (Three.js) ----
+   A transient, non-interactive stage holding the curl's WebGL canvas plus a
+   soft shadow band that tracks the curl across the page beneath. Positioned
+   to the flip's bounds: the full viewport for a section switch, one card's
+   rect for the Opinion turn. The live new content sits in the DOM underneath;
+   the canvas is transparent where the sheet has rolled away. */
+.curl-stage {
   position: fixed;
-  inset: 0;
   z-index: 60;
-  perspective: 2200px;
-  perspective-origin: 74% 12%; /* upper-right: the corner that lifts first */
   pointer-events: none;
-  overflow: hidden;
+  overflow: visible;
 }
-/* the shadow the turning sheet casts on the page already on the stand */
-.flip-cast {
+.curl-stage canvas { position: absolute; inset: 0; }
+/* soft shadow the lifting sheet casts on the page revealed beneath it */
+.curl-shadow {
   position: absolute;
-  inset: 0;
-  background: linear-gradient(100deg, rgba(29, 29, 27, 0.32), rgba(29, 29, 27, 0.05) 42%, transparent 66%);
-  transform-origin: left center;
-  animation: flipcast 780ms cubic-bezier(0.42, 0, 0.3, 1) forwards;
-}
-.leaf {
-  position: absolute;
-  inset: 0;
-  transform-origin: left center;
-  transform-style: preserve-3d;
-  will-change: transform;
-  animation: pageturn 780ms cubic-bezier(0.42, 0, 0.32, 1) forwards;
-}
-.leaf-face {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  backface-visibility: hidden;
-  background: var(--color-parchment);
-}
-.leaf-front > .fold-shot { position: absolute; top: 0; left: 0; }
-/* the verso: blank parchment with a gutter shadow pooling at the spine */
-.leaf-back {
-  transform: rotateY(180deg);
-  background:
-    linear-gradient(270deg, rgba(29, 29, 27, 0.18), transparent 24%),
-    var(--color-parchment);
-  border-right: 1px solid var(--color-charcoal);
-}
-/* the curl highlight — darkens the sheet toward its leading edge, peaking as
-   the page passes edge-on, so the flat leaf reads as a curved surface */
-.leaf-shade {
-  position: absolute;
-  inset: 0;
+  top: 0;
+  left: 0;
+  width: 55%;
+  height: 100%;
   pointer-events: none;
-  backface-visibility: hidden;
-  background: linear-gradient(102deg,
-    rgba(29, 29, 27, 0) 46%,
-    rgba(29, 29, 27, 0.06) 66%,
-    rgba(29, 29, 27, 0.34) 88%,
-    rgba(29, 29, 27, 0.5) 100%);
+  background: linear-gradient(90deg,
+    rgba(29, 29, 27, 0) 0%,
+    rgba(29, 29, 27, 0.12) 62%,
+    rgba(29, 29, 27, 0.34) 100%);
   opacity: 0;
-  animation: curlshade 780ms ease-in forwards;
-}
-
-@keyframes pageturn {
-  from { transform: rotate3d(0.16, 1, 0, 0deg); }
-  to   { transform: rotate3d(0.16, 1, 0, -178deg); }
-}
-@keyframes curlshade {
-  0%   { opacity: 0; }
-  50%  { opacity: 1; }
-  100% { opacity: 0.15; }
-}
-@keyframes flipcast {
-  0%   { opacity: 0; transform: skewY(0deg) scaleX(0.2); }
-  40%  { opacity: 1; }
-  100% { opacity: 0; transform: skewY(-4deg) scaleX(1); }
+  will-change: transform, opacity;
 }
 body.flipping { overflow: hidden; }
+
+/* Phase 3 — landing: a short overshoot-and-recover so the sheet flexes ~2–3px
+   and settles rather than stopping dead, per the storyboard's closing frames. */
+@keyframes pf-settle {
+  0%   { transform: translateY(-2.5px); }
+  55%  { transform: translateY(1px); }
+  100% { transform: translateY(0); }
+}
+.pf-settle { animation: pf-settle 220ms cubic-bezier(0.22, 1, 0.36, 1); }
 
 /* ============ responsive ============
    The below-fold grid collapses 3 → 2 → 1 in pure CSS; the 1px gap keeps the
@@ -676,5 +823,5 @@ body.flipping { overflow: hidden; }
     transition: none !important;
   }
   .board.refreshing > * { opacity: 0.7; }
-  .flip-stage { display: none !important; } /* cut straight to the new page */
+  .curl-stage { display: none !important; } /* engine is skipped under reduced motion; belt-and-braces */
 }

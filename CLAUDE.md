@@ -8,13 +8,18 @@ of truth is [design/DESIGN.md](design/DESIGN.md) + [design/tokens.json](design/t
 
 **Signal Desk** — a personal news-intelligence desk for one reader (a final-year CS
 student heading into ML / data engineering; it's the only news they read). Four
-sections — **Tech & AI · Geopolitics (World) · India · Esports (Sports)** — each
+sections — **Tech & AI · Geopolitics (World) · India · Esports** — each
 item **rule-scored for legitimacy** (no model anywhere in the loop) and rendered as
 an 1890s broadsheet newspaper (the "Miranda" theme).
 
 **Two hard constraints that override any convenience:**
-1. **Zero ongoing cost** — no paid APIs, no keys, no database, everything on
-   Netlify's free tier. No required environment variables.
+1. **Zero ongoing cost** — no paid APIs, no database, everything on Netlify's
+   free tier. No REQUIRED environment variables; the env-gated optionals all
+   skip cleanly when unset and are never hardcoded: `TAVILY_API_KEY` +
+   `TAVILY_MONTHLY_CREDITS` (discovery), `BLUESKY_HANDLE` +
+   `BLUESKY_APP_PASSWORD` and `YOUTUBE_API_KEY` (Public Pulse),
+   `MASTODON_ENABLED` (opt-in flag, keyless). Locally they live in the
+   gitignored `.env` (`netlify dev` and `node --env-file=.env` pick it up).
 2. **Legitimacy scoring stays rule-based** — a source-tier map + corroboration
    bump, never an LLM call.
 
@@ -44,6 +49,10 @@ Scheduled Netlify function (cron 4×/day)  →  fetch + dedupe + score + tag
 | `src/feeds.mjs` | RSS/Atom fetch + parse (fast-xml-parser); strips emoji from titles. |
 | `src/scoring.mjs` | The tier map + High/Med/Low + corroboration bump. **Extend the tier map here when adding sources.** |
 | `src/esports.mjs` | Liquipedia scraping (one spaced queue, budgeted), EWC pages, Dexerto/DotEsports rumor layer. `LP_UA` holds the contact email. |
+| `src/tavily.mjs` | Optional Tavily discovery: 5 fixed queries/run (basic depth), env-gated, Blobs budget ledger (`tavily-usage`) capped at 90% of the monthly plan, allowance spread over days left in the month. Results enter the normal dedupe+score path. Also holds the reader-facing daily pool (`MANUAL_DAILY_CAP` 20/day, `manualUsed` resets each UTC day). |
+| `netlify/functions/tavily-fetch.mjs` | "Search the wire" endpoint: GET = quota, POST ?section= runs one on-demand query and merges into the stored blob via `mergeManualDiscovery` (pipeline.mjs). Key never reaches the client; button hides when env vars are unset. |
+| `src/commentary.mjs` + `src/commentary-channels.mjs` | YouTube channel-RSS commentary layer. **The channel list lives in commentary-channels.mjs — edit there only**, grouped tech/geopolitics/india/esportsGlobal/esportsIndia; all three news sections now carry channels (India is populated — Ravish Kumar, ThePrint, Newslaundry, …). Every new ID is resolved from its `@handle` `externalId` and verified against the feed `<title>` before adding. Commentary sits outside the trust tiers: attached post-scoring (`item.commentary[]` on a matched story, `kind:"commentary"` standalone), never corroborates, never stamped High/Med/Low. |
+| `src/pulse.mjs` + `src/pulseConfig.mjs` + `src/sentimentLexicon.mjs` | Public Pulse: reader reaction on World/India ONLY — enrichment runs in refresh-news.mjs after scoring, before the blob write; Tech/Esports untouched. `item.pulse` is an ARRAY of provider entries: Bluesky (`BLUESKY_HANDLE`+`BLUESKY_APP_PASSWORD`, app password not the login), YouTube comments (`YOUTUBE_API_KEY` — search.list has its own ~100/day bucket since Jun 2026, hence yt perDeskCap 4 vs bluesky 8 and stored-video-ID reuse; commentsDisabled = normal no-match, try next candidate), optional Mastodon (World only, `MASTODON_ENABLED=true`). AFINN-165 lexicon shared by all providers; `pulse: []` on no match. Each entry also retains `samples: { positive, negative }` — real excerpts (`{text, author, permalink, engagement}`, cap 6/bucket via `samplesPerBucket`) kept during the same tone-bucketing pass; these feed the per-story OPINION card flip. **Tuning knobs live in pulseConfig.mjs.** |
 | `netlify/functions/refresh-news.mjs` | The scheduled sweep. Cron in `export const config`. |
 | `scripts/run-pipeline.mjs` | Runs the pipeline once → `public/data/seed.json` (used by `npm run pipeline` and the build). |
 | `scripts/build-tokens.mjs` | `design/tokens.json` → `public/tokens.css`. **`FONT_SUBS` maps commercial faces → free Google Fonts.** Re-run after editing tokens. |
@@ -77,6 +86,49 @@ settled and verified. Frontend re-themes should leave `src/**` and
 - **Rumors:** anything from Dexerto/DotEsports with rumor markers ("reportedly",
   "in talks", "sources say", …) is tagged **Rumor** and force-scored **Low** until a
   tier-1 source corroborates.
+- **YouTube channel RSS** (`youtube.com/feeds/videos.xml?channel_id={ID}`) parses
+  fine through the existing Atom path — no key, no quirks. But **resolving a
+  @handle to its ID needs `"externalId"`** from the handle page's source; the first
+  `"channelId"` hit can belong to a *related* channel (this bit both Perun and
+  CaspianReport during setup — always verify the ID against its feed `<title>`).
+  **AFK Gaming's channel is dormant** (main: nothing since 2022; "Global": Mar 2025),
+  so Esports-India commentary is legitimately empty until they upload again.
+- **Tavily runs in parallel with the section builders** (a shared promise each
+  builder awaits), never serially before them — serial would stack ~8s on the 24s
+  esports budget and threaten the 30s cap. Attempted requests count as spent,
+  success or failure. Live-verified 2026-07-12: ~0.8–2.7s per basic query, five
+  concurrent is fine. Quirk: the **first** sweep after a fresh `netlify dev` start
+  can abort all five at the 8s timeout (cold-start artifact of the local runner —
+  direct API calls are fast); the retry runs clean. Those aborted calls still
+  count as spent — correct, conservative.
+- **Bluesky search ANDs its query terms** — 6-token queries live-tested to near
+  zero hits; 4 keywords (proper nouns first, possessives stripped) find real
+  discussion. **Plain Jaccard title↔post similarity only ever matched verbatim
+  headline-mirror bots** (paraphrased engaged posts inflate the union and
+  collapse the score), so pulse matching uses title-side overlap
+  (`titleOverlap`) at the same 0.35 threshold plus a min-engagement floor.
+  Pulse adds ~2–4s to the sweep (live: 14.9s total). India desk matches are
+  legitimately sparse on quiet days — engaged India discussion exists but
+  often falls outside the 3-day recency window; an empty `pulse: []` is
+  correct, not a bug.
+- **`buildQuery` branches on headline case.** Indian desks (NDTV, TOI) write
+  Title Case, so "is this capitalized?" carries no signal and length-sorting
+  keeps long verbs ("Clings", "Speeds") over the subject — YouTube then returns
+  drama/gaming spam that the 0.35 similarity gate correctly rejects, so India
+  scored ~0 matches. Fix: when >75% of eligible words are capitalized, lead with
+  the subject (first content words in order) instead of the longest; sentence-
+  case wire headlines (World) keep the proper-noun+length path. Also keeps
+  all-caps 2-letter acronyms (ED, SC, PM, UK, US) that a plain length floor drops.
+  Live-verified India 0→match after the fix. Remaining India ceiling is inherent:
+  much regional news video is Hindi/Malayalam/Punjabi-titled, which a lexical
+  English title-overlap matcher scores low even when the video is the exact story.
+- **YouTube Data API v3 returns statistics as STRINGS** (`"viewCount":"10297"`)
+  — `Number()` them before math or storage. `commentsDisabled` arrives as HTTP
+  403 with `error.errors[0].reason === "commentsDisabled"`; made-for-kids
+  videos always have comments disabled, which makes any CoComelon video a free
+  live probe for that error shape. YouTube pulse matches accept on similarity
+  alone (no engagement floor, per spec) — an occasional low-view video match
+  is known behavior, tunable later in pulseConfig if it bothers.
 
 ## Frontend — the Miranda broadsheet
 
@@ -111,22 +163,45 @@ Full details in [README.md](README.md#frontend--the-miranda-broadsheet). The ess
   **UNVERIFIED/RUMOR** = struck ink (Low). Reason + source links stay attached to
   every story (in the lead rail, on Low stories, and always in the stamp's
   `title` + `aria-label`).
-- **Page flip** (`flipToNewPage()` in `app.js`): switching sections turns the whole
-  viewport like a bound book (turn.js / Apple Books model) — full-viewport
-  `.flip-stage` snapshots the whole page incl. masthead (scroll-offset) into one
-  `.leaf` hinged on the left spine, sweeps with a curl-shade + cast shadow. Fires
-  once per switch (and the Sports edition toggle), never on the active section.
-  **Under `prefers-reduced-motion` it's skipped — instant cut.**
+- **Page curl** — a real WebGL Apple-Books page curl (Three.js), shared by BOTH
+  flips: the section switch (`flipToNewPage()`) and the per-story Opinion card
+  (`curlFlip()` + the `.flip-btn` handler). The outgoing face is rasterized to a
+  texture (`modern-screenshot` / browser-native foreignObject — NOT html2canvas,
+  which throws on this project's `color-mix()` tokens), mapped onto a subdivided
+  plane, and a custom vertex/fragment shader wraps each vertex past a moving
+  curl line around a cylinder (θ=dist/R, x'=curl+R·sinθ, z'=R·(1−cosθ)) whose
+  **radius grows through the turn** (`uR` lerps R0→R1: tight corner curl → loose
+  roll), biases the curl line by y so a corner lifts first, and shades from the
+  post-deform normal with a **specular ridge + fold AO** and a darker/warmer
+  verso. **Direction is signed** (`uDir`, mirrors x in/out of a single forward
+  space): forward turn = top-right off the left edge; backward turn (to an
+  EARLIER tab, computed in `selectTab` from tab order) = top-left off the right
+  edge. Opinion card opens forward, closes backward. The new content is live
+  underneath; the transparent overlay reveals it as the sheet rolls. A `.pf-settle`
+  keyframe adds the 2–3px landing flex. **Vendored deps in `public/vendor/`:
+  `three.module.min.js` (+`three.core.min.js`), `modern-screenshot.mjs`; app.js is
+  an ES module (`<script type="module">`).** Under `prefers-reduced-motion` (or no
+  WebGL) the curl is skipped — instant cut.
+  - **Section rasterize gotcha:** a full section is ~5000px / ~1600 nodes, and
+    foreignObject rasterization is NODE-bound (~2–4s for the whole thing, and
+    scale doesn't help). `snapshotViewport()` clones `.paper`, drops every node
+    outside the visible band (decided from live geometry), leaving ~60 nodes →
+    **~200ms**. Do not rasterize the whole section. Cards are small (~90ms).
 
 ## Local dev
 
 ```bash
 npm install                # netlify-cli is a devDependency; nothing else to set up
-npm run pipeline           # run the sweep once → public/data/seed.json
+npm run pipeline           # run the sweep once → public/data/seed.json (never runs Pulse)
 npm run dev                # netlify dev on http://localhost:8888  (VS Code: Ctrl+Shift+B)
 curl -X POST http://localhost:8888/.netlify/functions/refresh-news   # sweep into local blob (dev only)
 node scripts/build-tokens.mjs   # regenerate tokens.css after editing design/tokens.json
 ```
+
+The optional-layer credentials live in the gitignored `.env` at the repo root —
+`netlify dev` loads it automatically, and standalone scripts get it via
+`node --env-file=.env`. Pulse enrichment runs only in refresh-news.mjs, so the
+seed build stays keyless and pulse-free by design.
 
 Windows shell is PowerShell; a Bash tool is also available. Prefer writing `.mjs`
 scripts to a scratch dir over long inline `node -e` (PowerShell mangles quotes/`[`).
@@ -152,7 +227,12 @@ scripts to a scratch dir over long inline `node -e` (PowerShell mangles quotes/`
 
 ## Build history (newest first)
 
-- **v4** (current) — newspaper format: Abril Fatface display face, importance-weighted
+- **v5** (current) — page-curl refinements: direction-signed turn (backward curl
+  when moving to an earlier tab, mirrored across the page), growing curl radius,
+  specular ridge + fold AO, finer mesh. Expanded the YouTube commentary roster —
+  Tech/AI, Geopolitics, and the previously-empty India slot all now carry
+  verified channels.
+- **v4** — newspaper format: Abril Fatface display face, importance-weighted
   front page, aligned shared-grid columns, circular rubber-stamp legitimacy,
   full-page book-flip on section change, dropped "PAGE ONE —" prefix.
 - **v3** — re-themed dark "Slash" → light "Miranda" broadsheet (tokens-driven).

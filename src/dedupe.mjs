@@ -6,6 +6,8 @@ const STOPWORDS = new Set([
   "said", "from", "its", "his", "her", "their", "new", "how", "why", "what",
 ]);
 
+// Also exported (as titleTokens/similarTitles below) for the Tavily-merge and
+// commentary layers, so "same story" means one thing everywhere.
 function tokens(title) {
   return new Set(
     title.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/)
@@ -74,3 +76,5 @@ export function dedupeItems(items) {
   for (const item of out) delete item._tokens;
   return out;
 }
+
+export { tokens as titleTokens, similar as similarTitles };
