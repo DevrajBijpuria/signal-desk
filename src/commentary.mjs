@@ -14,6 +14,41 @@ const MAX_AGE_DAYS = 7; // commentary goes stale fast; older uploads don't print
 const PER_CHANNEL = 3;
 
 const slug = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+const DESC_MAX = 280;
+
+// sponsor / patreon / call-to-action lines that are noise, not a synopsis
+const PROMO =
+  /(check out|sign ?up for|use code|promo code|% off|link in (the )?(bio|description)|our sponsor|sponsored by|thanks? to our|our generous|patreon|subscribe to|join our|follow (me|us) on|want to support|the best way is|join as a member|become a member|watch,? like)/i;
+
+/* A YouTube description is a raw block: often a sponsor line, then the real
+   synopsis, then hashtags and channel links. Pick the one genuine prose
+   paragraph (skipping promo lines) and trim it to a deck-length excerpt. If the
+   feed carries no real synopsis — only ads/links — return "" so the feed shows
+   the title alone rather than an advertisement. */
+function cleanDescription(raw, max = DESC_MAX) {
+  const blocks = String(raw ?? "").split(/\n+/).map((b) => b.trim()).filter(Boolean).slice(0, 8);
+  const noUrls = (b) => b.replace(/https?:\/\/\S+/g, "").trim();
+  // A real synopsis is a SENTENCE: it has terminal punctuation and reads like
+  // prose. That single test rejects the contact lines, Patreon credit rolls,
+  // social/CTA fragments (which end in a colon or are comma-lists) that
+  // keyword lists alone keep missing; PROMO + no-email guard the rest.
+  const prose = blocks.filter((b) => {
+    const t = noUrls(b);
+    return t.length >= 40 && /[a-z]/.test(t) && t.split(/\s+/).length >= 6
+      && /[.!?](\s|$)/.test(t) && !/\S+@\S+/.test(t)
+      && !t.startsWith("#") && !PROMO.test(t);
+  });
+  if (!prose.length) return "";
+  const rank = (b) => noUrls(b).length; // among real sentences, the fuller synopsis
+  let pick = prose.sort((a, b) => rank(b) - rank(a))[0];
+  pick = pick.replace(/https?:\/\/\S+/g, "").replace(/#\w+/g, "").replace(/\s+/g, " ").trim();
+  if (pick.length > max) {
+    const cut = pick.slice(0, max);
+    const stop = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+    pick = stop > 140 ? cut.slice(0, stop + 1).trim() : cut.replace(/\s+\S*$/, "").trim() + "…";
+  }
+  return pick;
+}
 
 async function fetchChannel(ch, stats) {
   const items = await fetchFeed(
@@ -24,7 +59,14 @@ async function fetchChannel(ch, stats) {
   return items
     .filter((v) => v.publishedAt && new Date(v.publishedAt).getTime() >= cutoff)
     .slice(0, PER_CHANNEL)
-    .map((v) => ({ id: v.id, title: v.title, url: v.url, channel: ch.name, publishedAt: v.publishedAt }));
+    .map((v) => ({
+      id: v.id,
+      title: v.title,
+      url: v.url,
+      channel: ch.name,
+      description: cleanDescription(v.mediaDescription),
+      publishedAt: v.publishedAt,
+    }));
 }
 
 /** All channel groups in parallel → { tech, geopolitics, india, esportsGlobal, esportsIndia }. */
@@ -54,14 +96,15 @@ export function attachCommentary(items, videos, extra = {}) {
     );
     if (match) {
       (match.commentary ??= []).push({
-        channel: v.channel, title: v.title, url: v.url, publishedAt: v.publishedAt,
+        channel: v.channel, title: v.title, url: v.url,
+        description: v.description ?? "", publishedAt: v.publishedAt,
       });
     } else {
       items.push({
         id: v.id,
         title: v.title,
         url: v.url,
-        summary: "",
+        summary: v.description ?? "", // the video's own description → renders as the deck
         publishedAt: v.publishedAt,
         kind: "commentary",
         tags: ["Commentary"],

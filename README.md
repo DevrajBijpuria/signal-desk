@@ -244,8 +244,15 @@ edit it there; the fetch logic never changes. Everything from this source is
 **commentary**, a category apart from the trust tiers: it never carries a
 legitimacy rating, never joins a story's source list, and never counts toward
 corroboration. A video that topically matches a story rides along under that
-story's byline; the rest run as their own stamped COMMENTARY entries. Uploads
-older than 7 days don't print (max 3 per channel per sweep). Current roster:
+story's byline; the rest run as their own stamped COMMENTARY entries **carrying
+the video's title and a short description**. That description is lifted from the
+feed's `media:group > media:description` and cleaned to the one real synopsis
+sentence — sponsor lines, Patreon credit-rolls, hashtags, and contact/social
+fragments are skipped, and when a feed carries no genuine synopsis the card shows
+the title alone rather than an ad. These entries sit in the section's column grid
+(never the title-only *In brief* rail) so both title and description always show,
+and they never take the lead. Uploads older than 7 days don't print (max 3 per
+channel per sweep). Current roster:
 **Tech/AI** — AI Explained, Yannic Kilcher, Wes Roth, Matt Wolfe, Two Minute
 Papers, Fireship, David Shapiro; **Geopolitics** — Perun, Zeihan, CaspianReport,
 Asianometry, Context Matters; **India** — Ravish Kumar, Punya Prasun Bajpai, The

@@ -34,10 +34,16 @@ export function parseFeed(xml) {
     }
   } else if (doc.feed) {
     for (const entry of asArray(doc.feed.entry)) {
+      // YouTube channel feeds carry the video description in media:group >
+      // media:description (never in <summary>/<content>). Keep it raw here —
+      // newlines intact — so the commentary layer can pick the prose paragraph
+      // out of the sponsor/hashtag noise; other Atom feeds don't have it.
+      const mediaDescription = decodeEntities(textOf(entry["media:group"]?.["media:description"])).trim();
       out.push({
         title: stripEmoji(decodeEntities(textOf(entry.title)).replace(/\s+/g, " ")),
         link: atomLink(entry),
         summary: cleanText(textOf(entry.summary ?? entry.content ?? "")),
+        mediaDescription,
         publishedAt: toIso(textOf(entry.published ?? entry.updated ?? "")),
         sourceName: null,
         sourceUrl: null,
@@ -74,6 +80,7 @@ export async function fetchFeed(def, stats) {
         summary: e.summary,
         publishedAt: e.publishedAt,
         sources: [{ name: sourceName, domain, url: e.link }],
+        ...(e.mediaDescription ? { mediaDescription: e.mediaDescription } : {}),
       };
     });
     stats.push({ id: def.id, ok: true, items: items.length, ms: Date.now() - started });

@@ -586,11 +586,13 @@ function renderBoard() {
   let rest = pool.filter((e) => !secondary.includes(e));
 
   // Briefs rail: on the National desk, the states; elsewhere the thinnest items.
+  // Commentary videos are kept out of the briefs either way — the rail drops the
+  // deck, and a channel video is only worth showing WITH its title + description.
   let briefs;
   if (state.tab === "india") {
-    briefs = rest.filter((e) => INDIA_BRIEF_TAG(e.item)).slice(0, 8);
+    briefs = rest.filter((e) => e.item.kind !== "commentary" && INDIA_BRIEF_TAG(e.item)).slice(0, 8);
   } else {
-    const thin = rest.filter((e) => !deckFor(e.item) || e.score < 3);
+    const thin = rest.filter((e) => e.item.kind !== "commentary" && (!deckFor(e.item) || e.score < 3));
     briefs = thin.slice(-8); // lowest-importance first out of the columns
   }
   rest = rest.filter((e) => !briefs.includes(e));
