@@ -151,7 +151,7 @@ blocks the rest of the sweep. Every attempted request counts as spent.
 
 **Search the wire (on-demand):** every section header carries a
 "Search the wire · N left today" button — one click runs that section's query
-right now (the Sports page searches its current edition) via
+right now (the Esports page searches its current edition) via
 `netlify/functions/tavily-fetch.mjs` and merges the results into the stored
 sweep with the same corroborate-or-new-item semantics. The key stays
 server-side. Clicks draw from a shared daily pool (20/day, resets each UTC
@@ -264,10 +264,10 @@ after editing tokens (the generated `public/tokens.css` is committed).
 The paper's furniture: a dateline topbar (edition **No. = day of year**, date,
 last press run + wire count); a full-width Ink Black **SIGNAL DESK** masthead
 banner in Abril Fatface with letters crowded tight; a section index strip as
-the contents line (TECH & AI / WORLD / INDIA / SPORTS — no "Page One" prefix);
+the contents line (TECH & AI / WORLD / INDIA / ESPORTS — no "Page One" prefix);
 per-desk ink banners with a one-line standfirst; then an **importance-weighted
 front page** (see below). India runs state-tagged stories as a **From the
-states** briefs rail; other desks get an **In brief** rail. Sports switches
+states** briefs rail; other desks get an **In brief** rail. Esports switches
 between Global and India editions. Stale data prints a "stale edition" notice;
 a failed load stops the presses (blackletter "Press Stopped"), never a spinner.
 
@@ -315,7 +315,7 @@ axis so the top-right corner leads, while a curl-shade gradient sweeps across
 and a cast shadow rakes the incoming page, so the flat sheet reads as a curving
 page. The next section is set on the stand beneath before the turn starts, then
 revealed as the sheet lifts away. Transform/opacity only (GPU-composited). It
-fires once per switch (and on the Sports edition toggle), never on the already-
+fires once per switch (and on the Esports edition toggle), never on the already-
 open section. Under **`prefers-reduced-motion` the flip is skipped entirely** —
 the new section cuts in instantly with no leaf in the DOM.
 
