@@ -163,12 +163,25 @@ Full details in [README.md](README.md#frontend--the-miranda-broadsheet). The ess
   **UNVERIFIED/RUMOR** = struck ink (Low). Reason + source links stay attached to
   every story (in the lead rail, on Low stories, and always in the stamp's
   `title` + `aria-label`).
-- **Page flip** (`flipToNewPage()` in `app.js`): switching sections turns the whole
-  viewport like a bound book (turn.js / Apple Books model) — full-viewport
-  `.flip-stage` snapshots the whole page incl. masthead (scroll-offset) into one
-  `.leaf` hinged on the left spine, sweeps with a curl-shade + cast shadow. Fires
-  once per switch (and the Esports edition toggle), never on the active section.
-  **Under `prefers-reduced-motion` it's skipped — instant cut.**
+- **Page curl** — a real WebGL Apple-Books page curl (Three.js), shared by BOTH
+  flips: the section switch (`flipToNewPage()`) and the per-story Opinion card
+  (`curlFlip()` + the `.flip-btn` handler). The outgoing face is rasterized to a
+  texture (`modern-screenshot` / browser-native foreignObject — NOT html2canvas,
+  which throws on this project's `color-mix()` tokens), mapped onto a subdivided
+  plane, and a custom vertex/fragment shader wraps each vertex past a moving
+  curl line around a cylinder (θ=dist/R, x'=curl+R·sinθ, z'=R·(1−cosθ)), biases
+  the curl line by y so the top-right corner lifts first, shades from the
+  post-deform normal, and tints the verso darker/warmer. The new content is live
+  underneath; the transparent overlay reveals it as the sheet rolls. A `.pf-settle`
+  keyframe adds the 2–3px landing flex. **Vendored deps in `public/vendor/`:
+  `three.module.min.js` (+`three.core.min.js`), `modern-screenshot.mjs`; app.js is
+  an ES module (`<script type="module">`).** Under `prefers-reduced-motion` (or no
+  WebGL) the curl is skipped — instant cut.
+  - **Section rasterize gotcha:** a full section is ~5000px / ~1600 nodes, and
+    foreignObject rasterization is NODE-bound (~2–4s for the whole thing, and
+    scale doesn't help). `snapshotViewport()` clones `.paper`, drops every node
+    outside the visible band (decided from live geometry), leaving ~60 nodes →
+    **~200ms**. Do not rasterize the whole section. Cards are small (~90ms).
 
 ## Local dev
 

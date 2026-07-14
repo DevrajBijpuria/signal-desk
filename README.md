@@ -305,19 +305,28 @@ count never leaves an empty cell exposing the ink backing. The grid collapses
 never overflow; `columnCount()` (matchMedia) is used only to size the filler
 padding, and re-renders on breakpoint change.
 
-### The page flip
+### The page curl (WebGL, Three.js)
 
-Switching sections turns the **whole page** like a bound book (the turn.js /
-Apple Books model): a fixed full-viewport stage snapshots the entire outgoing
-page — masthead included, offset by the reader's scroll — into a single leaf
-hinged on the left spine. The leaf sweeps right-to-left about a slightly tilted
-axis so the top-right corner leads, while a curl-shade gradient sweeps across
-and a cast shadow rakes the incoming page, so the flat sheet reads as a curving
-page. The next section is set on the stand beneath before the turn starts, then
-revealed as the sheet lifts away. Transform/opacity only (GPU-composited). It
-fires once per switch (and on the Esports edition toggle), never on the already-
-open section. Under **`prefers-reduced-motion` the flip is skipped entirely** —
-the new section cuts in instantly with no leaf in the DOM.
+Both transitions — the section switch and the per-story Opinion card — run a
+real **3D cylindrical page curl** modelled on the Apple Books turn, because a
+true curl can't be faked by transforming a rectangle in CSS. The outgoing face
+is rasterized to a texture (via `modern-screenshot`, which uses the browser's
+own renderer so the project's modern CSS and web fonts come through — unlike
+html2canvas, which chokes on `color-mix()`), mapped onto a finely subdivided
+`three.js` plane. A custom shader wraps every vertex past a moving curl line
+around a cylinder (`θ = dist/R`, `x' = curl + R·sinθ`, `z' = R·(1−cosθ)`),
+biases that line by `y` so the **top-right corner lifts first**, shades the
+sheet from its deformed normal, and tints the verso slightly darker and warmer.
+A soft shadow band tracks the curl across the page beneath; a short CSS settle
+adds the 2–3px landing flex. The new content sits live in the DOM underneath and
+is revealed as the transparent overlay's sheet rolls away — so both faces are
+the real rendered app, captured only for the ~0.8s motion. The section snapshot
+is trimmed to the visible viewport first (a full section is ~5000px of DOM;
+rasterizing all of it would cost seconds — trimming keeps it ~200ms). Fires once
+per switch (and on the Esports edition toggle), never on the already-open
+section. Under **`prefers-reduced-motion` (or no WebGL) the curl is skipped** —
+the new content cuts in instantly. Vendored, keyless deps in `public/vendor/`;
+`app.js` loads as an ES module.
 
 **Legitimacy prints as a circular rubber stamp**, not a gauge — an inked,
 distressed press mark (SVG: double ring, arc text, banner word, stars, a
