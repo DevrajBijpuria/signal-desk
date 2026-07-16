@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "news-desk",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["serve", "public", "-l", "8899"],
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/dev-launch.mjs"],
       "port": 8899
     }
   ]
