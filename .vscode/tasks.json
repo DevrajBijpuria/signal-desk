@@ -2,14 +2,24 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Start dev server (netlify dev)",
-      "type": "npm",
-      "script": "dev",
+      "label": "Refresh data + serve  (Ctrl+Shift+B → http://localhost:8899)",
+      "detail": "Runs the pipeline (fresh seed.json), then serves public/ with no-cache so edits and new data always show.",
+      "type": "process",
+      "command": "node",
+      "args": ["scripts/dev-launch.mjs"],
       "isBackground": true,
       "group": {
         "kind": "build",
         "isDefault": true
       },
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Start dev server (netlify dev — functions on :8888, does NOT refresh data)",
+      "type": "npm",
+      "script": "dev",
+      "isBackground": true,
       "problemMatcher": []
     },
     {
@@ -19,7 +29,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Trigger local sweep (needs dev server running)",
+      "label": "Trigger local sweep (needs netlify dev running)",
       "type": "shell",
       "command": "curl -X POST http://localhost:8888/.netlify/functions/refresh-news",
       "problemMatcher": []
