@@ -40,7 +40,12 @@ function bestTier(item) {
 }
 
 function merge(kept, dup) {
+  // Each corroborating source keeps its own headline wording (the framing
+  // comparison reads it); set lazily so single-source items never carry the
+  // field. Runs before the canonical-title swap below so nothing is lost.
+  for (const k of kept.sources) k.headline ??= kept.title;
   for (const s of dup.sources) {
+    s.headline ??= dup.title;
     if (!kept.sources.some((k) => k.domain === s.domain && k.name === s.name)) kept.sources.push(s);
   }
   // Prefer the higher-tier source's headline and link.

@@ -6,6 +6,7 @@ import { marketNote } from "./market.mjs";
 import { fetchEsports } from "./esports.mjs";
 import { fetchTavilyDiscovery } from "./tavily.mjs";
 import { fetchCommentary, attachCommentary } from "./commentary.mjs";
+import { attachFraming } from "./framing.mjs";
 
 const FEEDS = {
   tech: [
@@ -251,7 +252,10 @@ async function buildEsports(stats, tavilyP) {
       const match = items.find((it) => similarTitles(titleTokens(it.title), dTokens));
       if (match) {
         const s = d.sources[0];
-        if (!match.sources.some((k) => k.domain === s.domain)) match.sources.push(s);
+        if (!match.sources.some((k) => k.domain === s.domain)) {
+          for (const k of match.sources) k.headline ??= match.title;
+          match.sources.push({ ...s, headline: d.title });
+        }
       } else {
         items.push({ ...d, scope, tags: [] });
       }
@@ -301,9 +305,11 @@ export function mergeManualDiscovery(sections, querySection, discovered) {
     if (match) {
       const s = d.sources[0];
       if (match.sources.some((k) => k.domain === s.domain)) continue; // already on the story
-      match.sources.push(s);
+      for (const k of match.sources) k.headline ??= match.title;
+      match.sources.push({ ...s, headline: d.title });
       scoreItem(match);
       if (key === "esports") applyRumorRule(match);
+      attachFraming([match]);
       corroborated++;
     } else {
       scoreItem(d);
@@ -337,6 +343,9 @@ export async function runPipeline() {
     buildIndia(stats, tavilyP),
     buildEsports(stats, tavilyP),
   ]);
+  // Framing compares per-source headline wording on clustered stories —
+  // attached after scoring, read-only against trust, all four desks.
+  for (const section of [tech, geopolitics, india, esports]) attachFraming(section);
   // Commentary attaches after dedupe + scoring so it can never merge into a
   // source list or bump a legitimacy rating. News sections print every channel
   // video standalone (one per channel, the frontend's channels block); esports

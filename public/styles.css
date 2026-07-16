@@ -532,6 +532,8 @@ button {
   text-transform: uppercase;
 }
 .byline a { text-decoration: underline; text-underline-offset: 3px; transition: color 0.15s ease; }
+/* per-source framing label — quiet data furniture, never ember, never a stamp */
+.byline .framing-tag { opacity: 0.8; letter-spacing: 0.04em; }
 .byline a:hover { color: var(--color-pure-black); text-decoration-thickness: 1.5px; }
 
 .reason {

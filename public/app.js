@@ -267,9 +267,19 @@ function stampHtml(item) {
 
 /* ---------- story furniture ---------- */
 
+/* Cross-source framing rides the source list: each outlet's label describes
+   its OWN headline's word-choice — a separate axis from the legitimacy stamp
+   and from Public Pulse, never merged with either. */
+const FRAMING_NOTE = "Framing reflects headline word-choice only, not a bias or quality judgment.";
+
 function bylineHtml(item) {
+  const framing = new Map((item.framing ?? []).map((f) => [f.source, f.label]));
   const links = (item.sources ?? []).slice(0, 4)
-    .map((s) => `<a href="${esc(safeUrl(s.url))}" target="_blank" rel="noopener">${esc(s.name || s.domain)}</a>`);
+    .map((s) => {
+      const a = `<a href="${esc(safeUrl(s.url))}" target="_blank" rel="noopener">${esc(s.name || s.domain)}</a>`;
+      const fl = framing.get(s.name || s.domain);
+      return fl ? `${a} <span class="framing-tag">(${esc(fl)})</span>` : a;
+    });
   if (item.extraLink) {
     links.push(`<a href="${esc(safeUrl(item.extraLink.url))}" target="_blank" rel="noopener">${esc(item.extraLink.label)}</a>`);
   }
@@ -277,7 +287,10 @@ function bylineHtml(item) {
     ? `<span title="${esc(new Date(item.publishedAt).toLocaleString())}">${relTime(item.publishedAt)}</span>`
     : "";
   const label = item.kind === "commentary" ? "From the opinion desk" : "From the wire";
-  return `<p class="byline">${label}: ${links.join(" · ")}${time ? " · " + time : ""}</p>`;
+  const note = framing.size
+    ? ` <span class="pulse-info" tabindex="0" role="note" aria-label="${esc(FRAMING_NOTE)}" title="${esc(FRAMING_NOTE)}">ⓘ</span>`
+    : "";
+  return `<p class="byline">${label}: ${links.join(" · ")}${time ? " · " + time : ""}${note}</p>`;
 }
 
 const DIR_SVG = {

@@ -112,6 +112,28 @@ rule matches, rather than invented.
 
 The tier map lives in [src/scoring.mjs](src/scoring.mjs) — extend it as you add sources.
 
+## Cross-source framing (keyless)
+
+When dedupe clusters the same story from **two or more outlets**, each
+corroborating source keeps **its own original headline wording** through the
+merge, and one extra rule-based pass ([src/framing.mjs](src/framing.mjs)) scores
+each headline with the same AFINN-165 lexicon Public Pulse uses for Reaction
+Tone — no model, no key, all four desks. Each source's headline lands in one of
+five buckets — **Critical · Skeptical · Neutral · Measured · Favorable** — with
+thresholds kept as data in `FRAMING_CONFIG`, tuned against a live sweep's real
+headline scores (154 headlines in −7..+4, median 0, so ±1 reads as "near zero"
+and ±4 as strongly loaded wording). The labels print beside each outlet in the
+story's byline — "TechCrunch (Neutral) · The Verge (Skeptical)" — with a
+one-line disclosure carried the same way as Framing Alignment's: *framing
+reflects headline word-choice only, not a bias or quality judgment.*
+
+Boundaries, stated plainly: framing is a **separate axis from the legitimacy
+tier** and never influences it — a Critical-framed headline from a wire service
+stays High. It's equally distinct from Public Pulse's Reaction Tone and Framing
+Alignment, which measure *reader* reaction; this measures how the outlets
+themselves worded their headlines. Single-source stories carry no `framing`
+field at all — omitted, not invented.
+
 ## Sources & quirks
 
 | Section | Sources | Notes |
