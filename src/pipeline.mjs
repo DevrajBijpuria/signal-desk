@@ -338,10 +338,12 @@ export async function runPipeline() {
     buildEsports(stats, tavilyP),
   ]);
   // Commentary attaches after dedupe + scoring so it can never merge into a
-  // source list or bump a legitimacy rating.
-  attachCommentary(tech, commentary.tech);
-  attachCommentary(geopolitics, commentary.geopolitics);
-  attachCommentary(india, commentary.india);
+  // source list or bump a legitimacy rating. News sections print every channel
+  // video standalone (one per channel, the frontend's channels block); esports
+  // keeps the story-matching ride-along.
+  attachCommentary(tech, commentary.tech, {}, { standaloneOnly: true });
+  attachCommentary(geopolitics, commentary.geopolitics, {}, { standaloneOnly: true });
+  attachCommentary(india, commentary.india, {}, { standaloneOnly: true });
   attachCommentary(esports, commentary.esportsGlobal, { scope: "global" });
   attachCommentary(esports, commentary.esportsIndia, { scope: "india" });
   return {

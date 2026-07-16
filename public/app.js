@@ -548,6 +548,31 @@ function storyHtml(item, { brief = false, secondary = false } = {}) {
 const INDIA_BRIEF_TAG = (item) =>
   (item.tags ?? []).some((t) => t !== "Government") && (item.tags ?? []).length > 0;
 
+/* The latest videos from the reader's followed YouTube channels get their own
+   labelled block high on the page — otherwise, ranked lowest, they sink to the
+   bottom of the wire columns and go unseen. Channel · title · short description,
+   newest first. */
+const PLAY_SVG =
+  `<svg class="channel-play" viewBox="0 0 12 12" aria-hidden="true"><polygon points="2,1.5 10.5,6 2,10.5"/></svg>`;
+function channelsHtml(videos) {
+  if (!videos.length) return "";
+  const sorted = [...videos].sort((a, b) => (b.publishedAt ?? "").localeCompare(a.publishedAt ?? ""));
+  const cards = sorted.map((v) => {
+    const desc = deckFor(v);
+    const chan = v.sources?.[0]?.name ?? "Channel";
+    const time = v.publishedAt ? relTime(v.publishedAt) : "";
+    return `<article class="channel-card">
+        <p class="channel-src">${esc(chan)}${time ? ` · <span>${esc(time)}</span>` : ""}</p>
+        <h3 class="channel-title">${PLAY_SVG}<a href="${esc(safeUrl(v.url))}" target="_blank" rel="noopener">${esc(deEmoji(v.title))}</a></h3>
+        ${desc ? `<p class="channel-desc">${esc(desc)}</p>` : ""}
+      </article>`;
+  }).join("");
+  return `<section class="channels" aria-label="Latest from the channels">
+      <p class="channels-head">On the channels · latest video</p>
+      <div class="channels-grid">${cards}</div>
+    </section>`;
+}
+
 function renderBoard() {
   const meta = SECTION_META[state.tab];
   sectionBanner.textContent = meta.banner;
@@ -571,9 +596,22 @@ function renderBoard() {
     return;
   }
 
+  // Channel videos render in their own prominent block (below), never mixed into
+  // the news placement — ranked lowest, they would otherwise sink to the bottom
+  // of the wire columns and never be seen.
+  const videos = items.filter((i) => i.kind === "commentary");
+  const news = items.filter((i) => i.kind !== "commentary");
+
   // Importance decides the slot: lead well, secondary row, columns, briefs.
-  const scored = items.map((item, i) => ({ item, i, score: importance(item) }))
+  const scored = news.map((item, i) => ({ item, i, score: importance(item) }))
     .sort((a, b) => b.score - a.score || a.i - b.i);
+
+  // A section can (rarely) carry only channel videos this run — show just those.
+  if (!scored.length) {
+    board.innerHTML =
+      `<div class="front front--no-rail"><div class="main-well">${channelsHtml(videos)}</div></div>`;
+    return;
+  }
 
   const leadEntry = scored.slice(0, 3).find((e) => deckFor(e.item).length >= 60) ?? scored[0];
   const pool = scored.filter((e) => e !== leadEntry);
@@ -586,13 +624,11 @@ function renderBoard() {
   let rest = pool.filter((e) => !secondary.includes(e));
 
   // Briefs rail: on the National desk, the states; elsewhere the thinnest items.
-  // Commentary videos are kept out of the briefs either way — the rail drops the
-  // deck, and a channel video is only worth showing WITH its title + description.
   let briefs;
   if (state.tab === "india") {
-    briefs = rest.filter((e) => e.item.kind !== "commentary" && INDIA_BRIEF_TAG(e.item)).slice(0, 8);
+    briefs = rest.filter((e) => INDIA_BRIEF_TAG(e.item)).slice(0, 8);
   } else {
-    const thin = rest.filter((e) => e.item.kind !== "commentary" && (!deckFor(e.item) || e.score < 3));
+    const thin = rest.filter((e) => !deckFor(e.item) || e.score < 3);
     briefs = thin.slice(-8); // lowest-importance first out of the columns
   }
   rest = rest.filter((e) => !briefs.includes(e));
@@ -624,6 +660,7 @@ function renderBoard() {
       <div class="main-well">
         ${leadHtml(leadEntry.item)}
         ${secondary.length ? `<div class="secondary-row">${secondary.map((e) => storyHtml(e.item, { secondary: true })).join("")}</div>` : ""}
+        ${channelsHtml(videos)}
         ${columnsHtml}
       </div>
       ${railHtml}

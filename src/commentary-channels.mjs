@@ -21,7 +21,7 @@ export const COMMENTARY_CHANNELS = {
     { id: "UCVWX3F3DrTvDKa0LRilQoQQ", name: "Context Matters" },   // @ContextMatters
   ],
   india: [
-    { id: "UCaULrJ-T1vRf94daP5JSxpw", name: "Ravish Kumar Official" }, // @RavishKumarOfficial
+    { id: "UC0yXUUIaPVAqZLgRjvtMftw", name: "Ravish Kumar Official" }, // @ravishkumar.official — NOT @RavishKumarOfficial ("…Officialf"), a dormant impersonator
     { id: "UCXCG3leC3eHChlU2OPWMk_A", name: "Punya Prasun Bajpai" },   // @PunyaPrasunBajpai
     { id: "UCmTM_hPCeckqN3cPWtYZZcg", name: "The Deshbhakt" },         // @TheDeshBhakt
     { id: "UCuyRsHZILrU7ZDIAbGASHdA", name: "ThePrint" },             // @ThePrintIndia
